@@ -1,0 +1,10 @@
+# Runtime state, generated wallpaper copy, local backups
+home/.config/sddm-matugen/background
+.dotfiles-backup/
+*.log
+
+# Caches / machine-local junk that may be recreated by apps
+home/.config/kando/session/
+**/Cache/
+**/GPUCache/
+**/.cache/

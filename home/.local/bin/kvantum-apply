@@ -1,0 +1,32 @@
+#!/usr/bin/env fish
+set d ~/.config/Kvantum/Matugen
+set j ~/.config/quickshell/colors.json
+mkdir -p $d
+cp /usr/share/Kvantum/KvFlat/KvFlat.svg $d/Matugen.svg
+cp /usr/share/Kvantum/KvFlat/KvFlat.kvconfig $d/Matugen.kvconfig
+
+function c; jq -r .$argv[1] $j; end
+
+sed -i \
+  -e "s/^window.color=.*/window.color="(c surface)"/" \
+  -e "s/^base.color=.*/base.color="(c surfaceContainer)"/" \
+  -e "s/^alt.base.color=.*/alt.base.color="(c surfaceContainerHigh)"/" \
+  -e "s/^button.color=.*/button.color="(c surfaceContainerHigh)"/" \
+  -e "s/^light.color=.*/light.color="(c surfaceContainerHigh)"/" \
+  -e "s/^mid.light.color=.*/mid.light.color="(c surfaceContainerHigh)"/" \
+  -e "s/^dark.color=.*/dark.color="(c surface)"/" \
+  -e "s/^mid.color=.*/mid.color="(c surfaceContainer)"/" \
+  -e "s/^highlight.color=.*/highlight.color="(c primary)"/" \
+  -e "s/^inactive.highlight.color=.*/inactive.highlight.color="(c primary)"/" \
+  -e "s/^text.color=.*/text.color="(c fg)"/" \
+  -e "s/^window.text.color=.*/window.text.color="(c fg)"/" \
+  -e "s/^button.text.color=.*/button.text.color="(c fg)"/" \
+  -e "s/^disabled.text.color=.*/disabled.text.color="(c outline)"/" \
+  -e "s/^tooltip.base.color=.*/tooltip.base.color="(c surfaceContainerHigh)"/" \
+  -e "s/^tooltip.text.color=.*/tooltip.text.color="(c fg)"/" \
+  -e "s/^highlight.text.color=.*/highlight.text.color="(c fgPrimary)"/" \
+  -e "s/^link.color=.*/link.color="(c primary)"/" \
+  -e "s/^link.visited.color=.*/link.visited.color="(c tertiary)"/" \
+  $d/Matugen.kvconfig
+
+kvantummanager --set Matugen

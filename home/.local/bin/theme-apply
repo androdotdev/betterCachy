@@ -1,0 +1,26 @@
+#!/usr/bin/env fish
+argparse l/lock -- $argv; or exit 1
+
+set wp (realpath $argv[1])
+matugen image $wp --source-color-index 0 -m dark
+kvantum-apply
+
+# Keep the SDDM login wallpaper in sync. The theme reads this fixed path
+# (theme.conf: background=file:///home/rishabh/.config/sddm-matugen/background),
+# so the greeter picks up whatever wallpaper was applied last.
+cp -f -- $wp ~/.config/sddm-matugen/background
+if id sddm >/dev/null 2>&1
+    setfacl -m u:sddm:r ~/.config/sddm-matugen/background
+end
+
+printf 'wallpaper {\n    monitor =\n    path = %s\n    fit_mode = cover\n}\n\nsplash = false\n' $wp > ~/.config/hypr/hyprpaper.conf
+pkill -f hyprpaper
+sleep 0.3
+hyprpaper >/dev/null 2>&1 &; disown
+
+if set -q _flag_lock
+    echo '$lock_wall = '$wp > ~/.config/hypr/lock-wall.conf
+end
+
+gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark
+gsettings set org.gnome.desktop.interface color-scheme prefer-dark

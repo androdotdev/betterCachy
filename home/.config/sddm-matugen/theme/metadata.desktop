@@ -1,0 +1,13 @@
+[SddmGreeterTheme]
+Name=Matugen
+Description=Minimal Material You login theme driven by Matugen colors
+Author=rishabh
+Copyright=(c) 2026 rishabh
+License=MIT
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+Theme-Id=matugen
+Theme-API=2.0
+QtVersion=6

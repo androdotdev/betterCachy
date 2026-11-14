@@ -1,0 +1,13 @@
+{
+  "primary": "#ffb59b",
+  "fgPrimary": "#55200a",
+  "surface": "#1a110e",
+  "surfaceContainer": "#271d1a",
+  "surfaceContainerHigh": "#322824",
+  "fg": "#f1dfd9",
+  "fgDim": "#d8c2bb",
+  "outline": "#a08d86",
+  "secondary": "#e7bdb0",
+  "tertiary": "#d5c68e",
+  "error": "#ffb4ab"
+}
