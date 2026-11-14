@@ -55,7 +55,8 @@ Scope {
     property bool cavaAvailable: false
     readonly property int cavaBarCount: 14
     readonly property string cavaConfigPath: Quickshell.shellPath("bar/cava.conf")
-    property int popupCloseDelay: 400
+    property int popupCloseDelay: 450
+    property bool holdPopup: false
     // A previous Quickshell/mpv crash can leave its Unix socket behind. Use a
     // per-instance path so mpv never gets stuck trying to bind that stale socket.
     // Stable per-config socket name so config reloads reuse one file instead of
@@ -694,11 +695,43 @@ Scope {
         }
     }
 
+    // Clicking a song plays it right away and slots it after the current
+    // track (YouTube Music's "play next"), instead of dumping it at the end.
     function addTrack(track, playNow: bool): void {
+        const updated = queue.slice()
+        let current = queueIndex
+        const existing = updated.findIndex(function(item) { return item.id === track.id })
+        if (existing >= 0 && existing === current) {
+            if (playNow) playQueueItem(current)
+            return
+        }
+        if (existing >= 0) {
+            updated.splice(existing, 1)
+            if (existing < current) current -= 1
+        }
+        const at = current >= 0 ? current + 1 : updated.length
+        updated.splice(at, 0, track)
+        queueIndex = current
+        queue = updated
+        if (playNow || current < 0) playTrack(track, at)
+        else statusText = "Playing next · " + (track.title || "track")
+    }
+
+    function addTrackEnd(track): void {
+        if (queue.some(function(item) { return item.id === track.id })) {
+            statusText = "Already in the queue"
+            return
+        }
         const updated = queue.slice()
         updated.push(track)
         queue = updated
-        if (playNow || queueIndex < 0) playTrack(track, updated.length - 1)
+        if (queueIndex < 0) playTrack(track, updated.length - 1)
+        else statusText = "Added to the end of the queue"
+    }
+
+    function browserLabel(): string {
+        for (const option of browserOptions) if (option.value === selectedBrowser) return option.label
+        return selectedBrowser
     }
 
     function playQueueItem(index: int): void {
@@ -854,7 +887,7 @@ Scope {
     Timer {
         id: popupCloseTimer
         interval: root.popupCloseDelay
-        onTriggered: root.open = false
+        onTriggered: { if (!root.holdPopup) root.open = false }
     }
 
     Timer {
@@ -1028,7 +1061,8 @@ Scope {
 
     PopupWindow {
         id: playerPopup
-        visible: root.open && root.popupMode === "full"
+        readonly property bool shown: root.open && root.popupMode === "full"
+        visible: shown || fullBody.opacity > 0.01
         anchor.item: root.anchorItem
         anchor.edges: Edges.Bottom | Edges.Right
         anchor.gravity: Edges.Bottom | Edges.Left
@@ -1046,8 +1080,14 @@ Scope {
         }
 
         Rectangle {
+            id: fullBody
             anchors.fill: parent
             radius: 18
+            opacity: playerPopup.shown ? 1 : 0
+            scale: playerPopup.shown ? 1 : 0.96
+            transformOrigin: Item.TopRight
+            Behavior on opacity { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
             color: Colors.surfaceContainer
             border.color: Qt.alpha(Colors.outline, 0.4)
             border.width: 1
@@ -1059,6 +1099,7 @@ Scope {
             // ---------- sidebar ----------
             Rectangle {
                 id: sidebar
+                property bool browserListOpen: false
                 width: 216
                 anchors.left: parent.left
                 anchors.top: parent.top
@@ -1147,31 +1188,45 @@ Scope {
 
                     Text { text: "ACCOUNT"; color: Colors.outline; font.pixelSize: 9; font.bold: true; font.letterSpacing: 1.2 }
 
-                    ComboBox {
-                        id: browserChoice
+                    Rectangle {
                         width: parent.width
                         height: 30
-                        model: root.browserOptions
-                        textRole: "label"
-                        currentIndex: {
-                            const index = root.browserOptions.findIndex(function(option) { return option.value === root.selectedBrowser })
-                            return index >= 0 ? index : 0
-                        }
-                        onActivated: function(index) {
-                            root.selectedBrowser = root.browserOptions[index].value
-                            musicPreferences.browser = root.selectedBrowser
-                        }
-                        contentItem: Text {
-                            leftPadding: 10
-                            text: browserChoice.displayText
-                            color: Colors.fg
-                            font.pixelSize: 11
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                        }
-                        background: Rectangle { radius: 8; color: Colors.surfaceContainer; border.color: Qt.alpha(Colors.outline, 0.4) }
+                        radius: 8
+                        color: Colors.surfaceContainer
+                        border.color: sidebar.browserListOpen ? Colors.primary : Qt.alpha(Colors.outline, 0.4)
+                        Text { anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: root.browserLabel(); color: Colors.fg; font.pixelSize: 11 }
+                        Text { anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: sidebar.browserListOpen ? "▴" : "▾"; color: Colors.outline; font.pixelSize: 11 }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: sidebar.browserListOpen = !sidebar.browserListOpen }
                     }
 
+                    Column {
+                        width: parent.width
+                        spacing: 2
+                        visible: sidebar.browserListOpen
+                        Repeater {
+                            model: root.browserOptions
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool selected: modelData.value === root.selectedBrowser
+                                width: parent.width
+                                height: 26
+                                radius: 6
+                                color: selected ? Qt.alpha(Colors.primary, 0.2) : optionArea.containsMouse ? Qt.alpha(Colors.outline, 0.2) : "transparent"
+                                Text { anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: modelData.label; color: selected ? Colors.primary : Colors.fg; font.pixelSize: 11 }
+                                MouseArea {
+                                    id: optionArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.selectedBrowser = modelData.value
+                                        musicPreferences.browser = modelData.value
+                                        sidebar.browserListOpen = false
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Row {
                         width: parent.width
                         spacing: 8
@@ -1264,7 +1319,7 @@ Scope {
                                     }
                                     Text {
                                         width: parent.width - ((root.trackLoading || apiProcess.running) ? 18 : 0)
-                                        text: root.pageCount() + " items  ·  " + root.statusText
+                                        text: root.pageCount() + " items" + ((apiProcess.running || root.trackLoading || /fail|could not|error|expired|connect|not found/i.test(root.statusText)) ? "  ·  " + root.statusText : "")
                                         color: Colors.outline
                                         font.pixelSize: 11
                                         elide: Text.ElideRight
@@ -1294,7 +1349,7 @@ Scope {
                                 height: 32
                                 radius: 16
                                 color: playAllArea.containsMouse ? Qt.darker(Colors.primary, 1.15) : Colors.primary
-                                Text { anchors.centerIn: parent; text: "▶  Play all"; color: Colors.surface; font.pixelSize: 11; font.bold: true }
+                                Text { anchors.centerIn: parent; text: "▶  Play all"; color: Colors.fgPrimary; font.pixelSize: 11; font.bold: true }
                                 MouseArea { id: playAllArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.playCollectionAt(0) }
                             }
                             Rectangle {
@@ -1343,7 +1398,7 @@ Scope {
                             height: 38
                             radius: 19
                             color: searchArea.containsMouse ? Qt.darker(Colors.primary, 1.15) : Colors.primary
-                            Text { anchors.centerIn: parent; text: "⌕"; color: Colors.surface; font.pixelSize: 18 }
+                            Text { anchors.centerIn: parent; text: "⌕"; color: Colors.fgPrimary; font.pixelSize: 18 }
                             MouseArea { id: searchArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.searchNow() }
                         }
                     }
@@ -1383,6 +1438,11 @@ Scope {
 
                 Item {
                     id: listArea
+                    property int dragFrom: -1
+                    property real dragY: 0
+                    readonly property int rowStep: 56
+                    readonly property int dragTarget: dragFrom < 0 ? -1
+                        : Math.max(0, Math.min(root.queue.length - 1, Math.floor((dragY + searchList.contentY) / rowStep)))
                     anchors.top: headerColumn.bottom
                     anchors.topMargin: 10
                     anchors.left: parent.left
@@ -1397,6 +1457,7 @@ Scope {
                                 anchors.bottom: loadMore.visible ? loadMore.top : parent.bottom
                                 anchors.bottomMargin: loadMore.visible ? 6 : 0
                                 clip: true
+                                cacheBuffer: root.page === "queue" ? 20000 : 320
                                 model: root.listModel()
                                 spacing: 2
                                 boundsBehavior: Flickable.StopAtBounds
@@ -1408,6 +1469,7 @@ Scope {
                                     required property int index
                                     width: searchList.width - 2
                                     height: modelData.header ? 26 : 54
+                                    opacity: root.page === "queue" && listArea.dragFrom === index ? 0.3 : 1
 
                                     Text {
                                         visible: !!modelData.header
@@ -1529,7 +1591,7 @@ Scope {
                                                         onClicked: {
                                                             if (root.page === "queue") root.removeQueueItem(index)
                                                             else if (root.page === "library" || modelData.kind !== "song") root.openCollection(modelData)
-                                                            else root.addTrack(modelData, false)
+                                                            else root.addTrackEnd(modelData)
                                                         }
                                                     }
                                                 }
@@ -1540,27 +1602,42 @@ Scope {
                                     MouseArea {
                                         id: queueGrip
                                         visible: root.page === "queue" && !modelData.header
-                                        width: 26
+                                        width: 30
                                         height: parent.height
                                         anchors.left: parent.left
-                                        cursorShape: Qt.SizeVerCursor
-                                        drag.target: visible ? rowItem : null
-                                        drag.axis: Drag.YAxis
-                                        drag.threshold: 4
-                                        drag.minimumY: Math.max(0, searchList.contentY)
-                                        drag.maximumY: Math.max(0, searchList.contentY + searchList.height - rowItem.height)
+                                        hoverEnabled: true
+                                        preventStealing: true
+                                        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                                         z: 20
+                                        function updateDrag(mouse) {
+                                            listArea.dragY = queueGrip.mapToItem(listArea, mouse.x, mouse.y).y
+                                        }
+                                        onPressed: function(mouse) {
+                                            root.holdPopup = true
+                                            popupCloseTimer.stop()
+                                            listArea.dragFrom = index
+                                            updateDrag(mouse)
+                                        }
+                                        onPositionChanged: function(mouse) { if (pressed) updateDrag(mouse) }
                                         onReleased: {
-                                            const step = rowItem.height + searchList.spacing
-                                            let target = Math.round(rowItem.y / step)
-                                            target = Math.max(0, Math.min(root.queue.length - 1, target))
-                                            rowItem.y = 0
-                                            root.moveQueueItem(index, target)
+                                            const from = listArea.dragFrom
+                                            const to = listArea.dragTarget
+                                            const keepY = searchList.contentY
+                                            listArea.dragFrom = -1
+                                            root.holdPopup = false
+                                            if (from >= 0 && to >= 0 && from !== to) {
+                                                root.moveQueueItem(from, to)
+                                                Qt.callLater(function() { searchList.contentY = keepY })
+                                            }
+                                        }
+                                        onCanceled: {
+                                            listArea.dragFrom = -1
+                                            root.holdPopup = false
                                         }
                                         Text {
                                             anchors.centerIn: parent
                                             text: "⠿"
-                                            color: queueGrip.pressed ? Colors.primary : Colors.outline
+                                            color: queueGrip.pressed || queueGrip.containsMouse ? Colors.primary : Colors.outline
                                             font.pixelSize: 15
                                         }
                                     }
@@ -1586,6 +1663,65 @@ Scope {
                                     font.pixelSize: 11
                                 }
                             }
+
+                    Rectangle {
+                        id: dragGhost
+                        readonly property var track: listArea.dragFrom >= 0 && listArea.dragFrom < root.queue.length ? root.queue[listArea.dragFrom] : null
+                        visible: track !== null
+                        z: 60
+                        x: 0
+                        width: listArea.width - 2
+                        height: 54
+                        y: Math.max(0, Math.min(listArea.height - height, listArea.dragY - height / 2))
+                        radius: 8
+                        color: Qt.alpha(Colors.surfaceContainerHigh, 0.97)
+                        border.color: Colors.primary
+                        border.width: 1
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: 38
+                            anchors.rightMargin: 12
+                            spacing: 10
+                            Image {
+                                width: 40
+                                height: 40
+                                anchors.verticalCenter: parent.verticalCenter
+                                source: dragGhost.track ? dragGhost.track.thumbnail : ""
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                            }
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - 52
+                                spacing: 2
+                                Text { width: parent.width; text: dragGhost.track ? dragGhost.track.title : ""; color: Colors.fg; font.pixelSize: 11; elide: Text.ElideRight }
+                                Text { width: parent.width; text: dragGhost.track ? dragGhost.track.artist : ""; color: Colors.outline; font.pixelSize: 9; elide: Text.ElideRight }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        visible: listArea.dragFrom >= 0 && listArea.dragTarget !== listArea.dragFrom
+                        z: 55
+                        height: 3
+                        radius: 2
+                        color: Colors.primary
+                        width: listArea.width - 2
+                        y: (listArea.dragTarget > listArea.dragFrom
+                            ? listArea.dragTarget * listArea.rowStep + 55
+                            : listArea.dragTarget * listArea.rowStep - 1) - searchList.contentY - 1
+                    }
+
+                    Timer {
+                        interval: 16
+                        repeat: true
+                        running: listArea.dragFrom >= 0
+                        onTriggered: {
+                            const maxY = Math.max(0, searchList.contentHeight - searchList.height)
+                            if (listArea.dragY < 40) searchList.contentY = Math.max(0, searchList.contentY - 8)
+                            else if (listArea.dragY > listArea.height - 40) searchList.contentY = Math.min(maxY, searchList.contentY + 8)
+                        }
+                    }
 
                     Rectangle {
                         id: loadMore
@@ -1748,7 +1884,7 @@ Scope {
                                 height: 38
                                 radius: 19
                                 color: npPlayArea.pressed ? Qt.darker(Colors.primary, 1.2) : Colors.primary
-                                Text { anchors.centerIn: parent; text: root.playing ? "⏸" : "▶"; color: Colors.surface; font.pixelSize: 17 }
+                                Text { anchors.centerIn: parent; text: root.playing ? "⏸" : "▶"; color: Colors.fgPrimary; font.pixelSize: 17 }
                                 MouseArea { id: npPlayArea; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.togglePlayback() }
                             }
                             IconButton { anchors.verticalCenter: parent.verticalCenter; glyph: "⏭"; size: 19; onClicked: root.nextTrack() }
@@ -1779,7 +1915,8 @@ Scope {
 
     PopupWindow {
         id: miniPopup
-        visible: root.open && root.popupMode === "mini"
+        readonly property bool shown: root.open && root.popupMode === "mini"
+        visible: shown || miniBody.opacity > 0.01
         anchor.item: root.anchorItem
         anchor.edges: Edges.Bottom | Edges.Right
         anchor.gravity: Edges.Bottom | Edges.Left
@@ -1795,8 +1932,14 @@ Scope {
         }
 
         Rectangle {
+            id: miniBody
             anchors.fill: parent
             radius: 18
+            opacity: miniPopup.shown ? 1 : 0
+            scale: miniPopup.shown ? 1 : 0.96
+            transformOrigin: Item.TopRight
+            Behavior on opacity { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
             color: Colors.surfaceContainer
             border.color: Qt.alpha(Colors.outline, 0.4)
             border.width: 1
@@ -1942,7 +2085,7 @@ Scope {
                         height: 52
                         radius: 26
                         color: playArea.pressed ? Qt.darker(Colors.primary, 1.2) : Colors.primary
-                        Text { anchors.centerIn: parent; text: root.playing ? "⏸" : "▶"; color: Colors.surface; font.pixelSize: 22 }
+                        Text { anchors.centerIn: parent; text: root.playing ? "⏸" : "▶"; color: Colors.fgPrimary; font.pixelSize: 22 }
                         MouseArea { id: playArea; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.togglePlayback() }
                     }
                     IconButton { anchors.verticalCenter: parent.verticalCenter; glyph: "⏭"; size: 22; onClicked: root.nextTrack() }
