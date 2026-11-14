@@ -60,8 +60,10 @@ if [[ "$SELECT_ALL" == true ]]; then
 else
     # Interactive picker (only when a TTY and not forced -y).
     while :; do
-        PS3="Choose a home/ item to restore (number), 'a' = all, 'done' to finish: "
+        PS3="Pick a number, or a = all, d = done: "
         select opt in "${ITEMS[@]}" "All" "Done"; do
+            case "${REPLY,,}" in a|all) opt="All" ;; d|done) opt="Done" ;; esac
+            case "${REPLY,,}" in a|all) opt="All" ;; d|done) opt="Done" ;; esac
             case "$opt" in
                 "All")
                     for it in "${ITEMS[@]}"; do
@@ -88,7 +90,6 @@ fi
 
 # ---- backup BEFORE anything is written ----
 echo "==> Backing up existing files to $BACKUP_DIR"
-mkdir -p "$BACKUP_DIR"
 
 # ---- show what will be restored ----
 echo "==> Restoring these items into $HOME:"
@@ -101,6 +102,7 @@ if [[ "$DRY_RUN" == true ]]; then
 fi
 
 # ---- perform the restore ----
+mkdir -p "$BACKUP_DIR"
 rsync -a --backup --backup-dir="$BACKUP_DIR" --human-readable \
     "${SRC[@]}" "$HOME/"
 
