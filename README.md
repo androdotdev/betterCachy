@@ -6,6 +6,10 @@ Matugen-powered SDDM login theme.
 > See [`ARCHITECTURE.md`](ARCHITECTURE.md) for what every piece does and how the
 > theming pipeline is wired together.
 
+## Screenshot
+
+![demo](./demo.png)
+
 ## What's inside
 
 | Path | Contents |
