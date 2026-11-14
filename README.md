@@ -38,7 +38,7 @@ to generate the colour palette from your chosen wallpaper.
 
 ## Screenshot
 
-![demo](./demo.png)
+![demo](./demo.jpg)
 
 ## What's inside
 
