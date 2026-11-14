@@ -729,11 +729,6 @@ Scope {
         else statusText = "Added to the end of the queue"
     }
 
-    function browserLabel(): string {
-        for (const option of browserOptions) if (option.value === selectedBrowser) return option.label
-        return selectedBrowser
-    }
-
     function playQueueItem(index: int): void {
         if (index < 0 || index >= queue.length) return
         playTrack(queue[index], index)
@@ -1194,7 +1189,7 @@ Scope {
                         radius: 8
                         color: Colors.surfaceContainer
                         border.color: sidebar.browserListOpen ? Colors.primary : Qt.alpha(Colors.outline, 0.4)
-                        Text { anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: root.browserLabel(); color: Colors.fg; font.pixelSize: 11 }
+                        Text { anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: root.browserLabel(root.selectedBrowser); color: Colors.fg; font.pixelSize: 11 }
                         Text { anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: sidebar.browserListOpen ? "▴" : "▾"; color: Colors.outline; font.pixelSize: 11 }
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: sidebar.browserListOpen = !sidebar.browserListOpen }
                     }
