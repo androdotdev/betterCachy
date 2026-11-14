@@ -4,7 +4,7 @@ How the pieces fit together, what is tracked, and what is generated at runtime.
 
 ## Big picture
 
-```
+```text
                     ┌──────────────────────────────┐
                     │            SDDM              │
                     │  theme: matugen (Qt/QML)     │
@@ -15,7 +15,7 @@ How the pieces fit together, what is tracked, and what is generated at runtime.
                                    ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │ Hyprland (Wayland compositor)                                    │
-│  ~/.config/hypr/hyprland.lua  ──require──▶ hyprland-settings.lua │
+│  ~/.config/hypr/hyprland.lua ──require──▶ hyprland-settings.lua │
 │  autostart: hyprpaper, kando, kdeconnectd                        │
 │                                                                  │
 │  hyprpaper ──▶ desktop wallpaper                                 │
@@ -39,156 +39,61 @@ How the pieces fit together, what is tracked, and what is generated at runtime.
 
 ## Repository layout
 
-```
+```text
 betterCachy/
-├── README.md                  setup / restore instructions
-├── ARCHITECTURE.md            this file
-├── install.sh                 restores home/ into $HOME (with backup)
-├── .gitignore
-├── home/                      mirrors $HOME
+├── README.md                          setup / restore instructions
+├── ARCHITECTURE.md                    this file
+├── install.sh                         restores home/ into $HOME (with backup)
+├── .gitignore                         runtime + generated state exclusions
+├── home/                              mirrors $HOME (dotfiles + key configs)
 │   ├── .bashrc .bash_profile .bash_logout
-│   ├── .zshrc .p10k.zsh       zsh + powerlevel10k
+│   ├── .zshrc .p10k.zsh          zsh + powerlevel10k
 │   ├── .gitconfig .gtkrc-2.0
 │   ├── .local/bin/
 │   │   ├── theme-apply        main theming entry point (fish)
 │   │   └── kvantum-apply      rebuilds the Kvantum theme (fish)
-│   └── .config/
-│       ├── hypr/              Hyprland, hyprpaper, hyprlock, hypridle
-│       ├── quickshell/        bar + OSD QML shell
-│       ├── matugen/           Matugen config + templates
-│       ├── sddm-matugen/      SDDM theme source + install.sh
-│       ├── Kvantum/           generated Kvantum theme (Matugen)
-│       ├── gtk-3.0/ gtk-4.0/  GTK colours/settings
-│       ├── qt5ct/ qt6ct/      Qt colour schemes
-│       ├── kitty/ ghostty/ alacritty/   terminals
-│       ├── nvim/ helix/ micro/ zed/     editors
-│       ├── btop/ cava/        system + audio visualiser
-│       ├── opencode/ mise/    tooling
-│       ├── systemd/user/      user services
-│       ├── KDE/ kdeglobals …  KDE app settings (dolphin, kdeconnect)
-│       ├── i3/ polybar/ picom/ swash/   legacy/auxiliary X11 setup
-│       └── …                  mpv, haruna, copyq, kando, vicinae, etc.
-├── system/                    reference snapshot of root-owned files
-│   ├── etc/sddm.conf.d/zz-matugen-theme.conf
-│   └── usr/share/sddm/themes/matugen/   (Main.qml, widgets, theme.conf)
-└── packages/
-    ├── pacman-explicit.txt    official repo packages (pacman -Qqe)
-    ├── pacman-foreign.txt     AUR/foreign packages (pacman -Qqm)
-    └── flatpak.txt            Flatpak app IDs
+│   ├── .config/
+│   │   ├── hypr/              Hyprland, hyprpaper, hyprlock, hypridle
+│   │   ├── matugen/           Matugen config + templates
+│   │   ├── sddm-matugen/      SDDM theme source + install.sh
+│   │   ├── quickshell/        Wayland bar + OSD shell
+│   │   ├── systemd/user/      user services
+│   │   ├── uwsm/env           uwsm session environment
+│   │   ├── Kvantum/           Kvantum theme
+│   │   ├── gtk-3.0/ gtk-4.0/  GTK themes
+│   │   ├── qt5ct/ qt6ct/      Qt colour schemes
+│   │   ├── kitty/ kando/ nwg-look/ noctalia/   launchers + terminal
+│   │   └── (no orbitals, no X11 legacy)         cleaned out
+│   ├── (no editors, no terminals, no btop/cava, no opencode/mise)
+│   └── (no KDE, no i3/polybar/picom/swash)
+├── system/                            reference snapshot of root-owned files
+│   └── etc/sddm.conf.d/zz-matugen-theme.conf
+│       + usr/share/sddm/themes/matugen/   (Main.qml, widgets, theme.conf, Colors.qml)
+├── packages/
+│   ├── pacman-explicit.txt    official repo packages (pacman -Qqe)
+│   ├── pacman-foreign.txt     AUR/foreign packages (pacman -Qqm)
+│   └── flatpak.txt            Flatpak app IDs
+└── demo.png                           screenshot of the desktop
 ```
 
-## Hyprland
+## Flow
 
-`~/.config/hypr/hyprland.lua` is the compositor config in Lua form (Hyprland's
-`hl.*` API). It defines monitors, startup commands, env vars, keybinds, window
-rules, and layer rules. At the end it does:
+1. **`install.sh`** clones/restores `home/` into `$HOME` with backup; `system/` is a
+   reference only. `--system` additionally runs the SDDM install script with `sudo`.
+2. **`theme-apply <wallpaper>`** (fish, in `home/.local/bin/`) calls Matugen via the
+   templates, then:
+   - copies the wallpaper to `~/.config/sddm-matugen/background` (the fixed path the
+     SDDM greeter reads),
+   - rewrites `~/.config/hypr/hyprpaper.conf` + restarts `hyprpaper`,
+   - with `-l`, rewrites `lock-wall.conf` for hyprlock,
+   - sets `adw-gtk3-dark` + dark colour-scheme via `gsettings`.
+3. **`kvantum-apply`** (fish) rebuilds the Kvantum theme from the Matugen palette.
+4. **SDDM** (`sudo ~/.config/sddm-matugen/install.sh`) installs to `/usr/share/sddm/themes/`
+   and grants the `sddm` greeter ACL read access.
 
-```lua
-require("hyprland-settings")
-```
-
-`hyprland-settings.lua` is **generated by the *Hyprland Settings* panel** — edits
-made there overwrite the file on Apply. Put hand-written overrides above the
-`require` line in `hyprland.lua`.
-
-On `hyprland.start` it launches `hyprpaper`, `kando`, and `kdeconnectd`.
-Quickshell is *not* started here; it runs as a user service.
-
-Supporting files:
-
-| File | Role |
-| --- | --- |
-| `hyprpaper.conf` | wallpaper daemon state (`path`, `fit_mode`) — rewritten by `theme-apply` |
-| `hyprlock.conf` | lock screen layout; sources `colors.conf` + `lock-wall.conf` |
-| `lock-wall.conf` | `$lock_wall` path, written by `theme-apply -l` |
-| `hypridle.conf` | idle/sleep → `loginctl lock-session`, DPMS off/on |
-| `colors.conf` | **generated** by Matugen (`$primary`, `$surface`, …) |
-
-## Quickshell bar and OSD
-
-`shell.qml` is a `Scope` that instantiates `bar/Bar.qml` and `osd/OSD.qml`.
-
-- `bar/` is a QML module (`qs.bar`) containing `Bar`, `MusicPlayer`,
-  `QuickSettings`, `NotificationList`, `ThemedSlider`, `IconButton`, and
-  `LoadingSpinner`. It uses Quickshell services for Hyprland workspaces, MPRIS,
-  notifications, PipeWire, UPower, system tray, and networking.
-- `bar/cava.conf` drives the audio bars in the music capsule; Quickshell only
-  streams cava output while playback is active.
-- `bar/ytmusic-api.sh` adapts YouTube Music InnerTube requests; browser cookies
-  are stored locally (never in this repo).
-- `osd/OSD.qml` renders volume/brightness-style overlays; `DefaultTheme.qml`
-  maps the palette into OSD colours.
-
-**Palette plumbing:** `Colors.qml` is a `Singleton` that `FileView`s
-`~/.config/quickshell/colors.json` with `watchChanges: true`, so the bar
-recolours live the moment Matugen rewrites the JSON. The `JsonAdapter` defaults
-are fallbacks for a missing file.
-
-## Matugen pipeline
-
-`~/.config/matugen/config.toml` maps each template to its output:
-
-| Template | Output | Consumer |
-| --- | --- | --- |
-| `Colors.json` | `~/.config/quickshell/colors.json` | Quickshell bar/OSD |
-| `gtk.css` | `~/.config/gtk-3.0/gtk.css`, `~/.config/gtk-4.0/gtk.css` | GTK apps |
-| `qtct.conf` | `~/.config/qt5ct/colors/matugen.conf`, `qt6ct/...` | Qt apps |
-| `hypr-colors.conf` | `~/.config/hypr/colors.conf` | hyprlock |
-| `hyprland.conf` | (template kept for reference) | — |
-| `SddmColors.qml` | `~/.config/sddm-matugen/Colors.qml` | SDDM theme |
-
-`~/.local/bin/theme-apply` is the orchestrator:
-
-1. `matugen image <wallpaper> --source-color-index 0 -m dark` → regenerates all
-   palettes above.
-2. `kvantum-apply` → copies `KvFlat` into `~/.config/Kvantum/Matugen`, recolours
-   `Matugen.kvconfig` from `colors.json`, applies via `kvantummanager`.
-3. Copies the wallpaper to `~/.config/sddm-matugen/background` (fixed path the
-   greeter reads) and grants `sddm` read access with `setfacl`.
-4. Rewrites `~/.config/hypr/hyprpaper.conf`, restarts `hyprpaper`.
-5. With `-l`: rewrites `~/.config/hypr/lock-wall.conf` for hyprlock.
-6. Sets `adw-gtk3-dark` + dark colour-scheme via `gsettings`.
-
-So one command recolours GTK, Qt, Hyprlock, Quickshell, Kvantum, and SDDM, and
-changes the desktop + login wallpapers together.
-
-## SDDM login theme
-
-Source lives in `~/.config/sddm-matugen/`:
-
-| Path | Role |
-| --- | --- |
-| `theme/` | editable theme: `Main.qml`, `InputField.qml`, `ActionButton.qml`, `LinkButton.qml`, `metadata.desktop`, `theme.conf` |
-| `theme/theme.conf` | runtime knobs: `background`, `dim`, `showClock`, `colorsPath` |
-| `Colors.qml` | **generated** Matugen palette |
-| `background` | current wallpaper copy (not committed) |
-| `install.sh` | installs theme + config and fixes permissions |
-
-`Main.qml` loads the palette through a `Loader` pointed at `config.colorsPath`
-(so the generated file can live outside the root-owned theme directory), reads
-the wallpaper from `config.background`, applies `config.dim` as a black overlay,
-and draws a palette-tinted vertical gradient over it.
-
-`install.sh` (run with `sudo`):
-
-1. Copies `theme/*` to `/usr/share/sddm/themes/matugen/` and `Colors.qml` beside it.
-2. Writes `/etc/sddm.conf.d/zz-matugen-theme.conf` with `Current=matugen`
-   (the `zz-` prefix makes it sort after `kde_settings.conf`, so it wins).
-3. Grants the unprivileged `sddm` greeter user ACL access to
-   `~/.config/sddm-matugen` (execute-only traversal of `$HOME`, read on the
-   palette and wallpaper), then verifies readability as `sddm`.
-4. Seeds `background` from the active hyprpaper wallpaper if it is missing.
-
-Because `theme.conf` points at the user-owned `background` file, later wallpaper
-changes need no root — `theme-apply` just overwrites that file.
-
-## User services
-
-| Unit | Runs | Started by |
-| --- | --- | --- |
-| `quickshell.service` | `quickshell` (bar + OSD) | `graphical-session.target` |
-| `vicinae.service` | `vicinae server` (launcher) | `graphical-session.target` |
-| `swayosd.service` | `swayosd-server` (volume/brightness OSD) | `default.target` |
+Because everything colour-related is generated from Matugen + a single wallpaper, changing
+the palette later is a single command — no manual edits to GTK, Qt, Hypr, Quickshell or SDDM
+configs.
 
 ## Generated vs. tracked files
 
@@ -203,15 +108,14 @@ Generated at theme time (safe to delete; run `theme-apply` to recreate):
 - `~/.config/sddm-matugen/background`
 - `~/.config/hypr/hyprpaper.conf`, `lock-wall.conf`
 
-Tracked here as snapshots of the current machine; treat them as outputs, not
-sources. The sources are the templates in `~/.config/matugen/templates/`, the
-theme QML in `~/.config/sddm-matugen/theme/`, and the scripts in
-`~/.local/bin/`.
+Tracked here as snapshots of the current machine; treat them as outputs, not sources. The
+sources are the templates in `~/.config/matugen/templates/`, the theme QML in
+`~/.config/sddm-matugen/theme/`, and the scripts in `~/.local/bin/`.
 
 ## Restore flow
 
-`./install.sh` runs `rsync -a --backup --backup-dir=~/.betterCachy-backup/<ts>`
-from `home/` into `$HOME`, so the repo's tree maps 1:1 onto real paths. Nothing
-outside `home/` is touched; `system/` is only a reference. `--system` additionally
-runs the SDDM `install.sh` with `sudo`. After restoring, run `theme-apply` to
-regenerate every palette and then enable the user services (see README).
+`./install.sh` runs `rsync -a --backup --backup-dir=~/.betterCachy-backup/<ts>` from
+`home/` into `$HOME`, so the repo's tree maps 1:1 onto real paths. Nothing outside
+`home/` is touched; `system/` is only a reference. `--system` additionally runs the SDDM
+`install.sh` with `sudo`. After restoring, run `theme-apply` to regenerate every palette
+and then enable the user services (see README).
