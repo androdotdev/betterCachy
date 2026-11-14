@@ -6,7 +6,7 @@ matugen image $wp --source-color-index 0 -m dark
 kvantum-apply
 
 # Keep the SDDM login wallpaper in sync. The theme reads this fixed path
-# (theme.conf: background=file:///home/rishabh/.config/sddm-matugen/background),
+# (theme.conf: background=file://$HOME/.config/sddm-matugen/background),
 # so the greeter picks up whatever wallpaper was applied last.
 cp -f -- $wp ~/.config/sddm-matugen/background
 if id sddm >/dev/null 2>&1

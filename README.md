@@ -139,7 +139,7 @@ Anything overwritten by `install.sh` is preserved under
   rewrites them.
 - The SDDM background is a copy at `~/.config/sddm-matugen/background`; the
   actual image is not committed.
-- Some paths are absolute (`/home/rishabh/...`) because the SDDM greeter and the
+- SDDM paths use `@@HOME@@` placeholder expanded at install time; Fish scripts use `$HOME`; On a different username re-run `./install.sh --system` to regenerate. the SDDM greeter and the
   fish scripts cannot expand `~`: `home/.config/sddm-matugen/theme/theme.conf`,
   `home/.config/matugen/config.toml`, `home/.config/sddm-matugen/install.sh`, and
   `home/.local/bin/theme-apply`. Update them if you restore under a different
