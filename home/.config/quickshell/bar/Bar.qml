@@ -297,14 +297,16 @@ Scope {
                             id: ytmusicMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                             cursorShape: Qt.PointingHandCursor
-                            onEntered: ytMusicPlayer.holdOpen()
-                            onExited: ytMusicPlayer.scheduleClose()
                             onClicked: function(mouse) {
                                 root.activePopup = ""
                                 if (mouse.button === Qt.RightButton) ytMusicPlayer.toggleFull()
+                                else if (mouse.button === Qt.MiddleButton) ytMusicPlayer.togglePlayback()
                                 else ytMusicPlayer.toggleMini()
+                            }
+                            onWheel: function(wheel) {
+                                ytMusicPlayer.nudgeVolume(wheel.angleDelta.y > 0 ? 5 : -5)
                             }
                         }
                     }

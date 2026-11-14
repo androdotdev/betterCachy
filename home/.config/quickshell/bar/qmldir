@@ -3,6 +3,11 @@ Bar 1.0 Bar.qml
 QuickSettings 1.0 QuickSettings.qml
 NotificationList 1.0 NotificationList.qml
 MusicPlayer 1.0 MusicPlayer.qml
+MiniPlayer 1.0 MiniPlayer.qml
+LyricsView 1.0 LyricsView.qml
+Skeleton 1.0 Skeleton.qml
+MaskedImage 1.0 MaskedImage.qml
+BlurBackdrop 1.0 BlurBackdrop.qml
 LoadingSpinner 1.0 LoadingSpinner.qml
 ThemedSlider 1.0 ThemedSlider.qml
 IconButton 1.0 IconButton.qml

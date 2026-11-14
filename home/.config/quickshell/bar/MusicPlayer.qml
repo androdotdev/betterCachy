@@ -50,6 +50,24 @@ Scope {
     property bool autoplay: true
     property bool radioPending: false
     property var pendingRequests: []
+    property var lyricsLines: []
+    property string lyricsState: "idle"
+    property string lyricsTrackId: ""
+    property string lyricsPendingId: ""
+    property bool lyricsWanted: false
+    property bool lyricsRetry: false
+    property string lyricsMode: "original"
+    property var lyricsAlt: []
+    property string lyricsAltState: "idle"
+    property string lyricsAltFor: ""
+    property bool lyricsAltRetry: false
+    readonly property string translateScript: Quickshell.shellPath("bar/ytmusic-translate.py")
+    property int failStreak: 0
+    property string retryTrackId: ""
+    property double closedAt: 0
+    property string closedMode: ""
+    readonly property bool listLoading: apiProcess.running && page !== "queue"
+    readonly property string lyricsScript: Quickshell.shellPath("bar/ytmusic-lyrics.sh")
     property string activeSearchQuery: ""
     property var cavaBars: []
     property bool cavaAvailable: false
@@ -71,7 +89,19 @@ Scope {
 
     onQueueChanged: saveSession()
     onQueueIndexChanged: saveSession()
-    onCurrentTrackChanged: saveSession()
+    onLyricsLinesChanged: {
+        lyricsAlt = []
+        lyricsAltState = "idle"
+        if (lyricsMode !== "original" && lyricsLines.length > 0) requestLyricsAlt()
+    }
+
+    onCurrentTrackChanged: {
+        saveSession()
+        lyricsTrackId = ""
+        lyricsLines = []
+        lyricsState = "idle"
+        if (lyricsWanted) requestLyrics()
+    }
     onVolumeLevelChanged: saveSession()
     onMutedChanged: saveSession()
     onPlayingChanged: updateCava()
@@ -194,31 +224,126 @@ Scope {
         statusText = "Opened YouTube Music in " + browserLabel(selectedBrowser)
     }
 
+    // Popups close on a click outside, Esc, or clicking the capsule again.
+    // There is no hover-to-stay timer anymore.
+    function closePopup(): void {
+        if (holdPopup || !open) return
+        closedMode = popupMode
+        closedAt = Date.now()
+        open = false
+    }
+
+    // The focus grab clears (and closes the popup) just before the capsule click
+    // arrives, so ignore a toggle that lands right after a close of the same mode.
+    function justClosed(mode: string): bool {
+        return !open && closedMode === mode && Date.now() - closedAt < 300
+    }
+
     function toggleMini(): void {
-        if (open && popupMode === "mini") {
-            open = false
-            return
-        }
-        popupCloseTimer.stop()
+        if (open && popupMode === "mini") { closePopup(); return }
+        if (justClosed("mini")) return
         popupMode = "mini"
         open = true
-        // Warm up mpv while the user browses so playback starts instantly.
+        // Warm up mpv while the user looks around so playback starts instantly.
         startPlayer()
     }
 
-    function toggleFull(): void {
-        if (open && popupMode === "full") {
-            open = false
-            return
-        }
-        popupCloseTimer.stop()
+    function openLibrary(targetPage: string): void {
+        page = targetPage || "home"
         popupMode = "full"
-        page = "home"
         open = true
         startPlayer()
-        if (!homeCacheReady) statusText = "Restoring quick picks…"
-        else if (quickPicks.length + homeMixes.length === 0) fetchHome(false)
-        else statusText = "Quick picks · refresh to update"
+        if (page === "home") {
+            if (!homeCacheReady) statusText = "Restoring quick picks…"
+            else if (quickPicks.length + homeMixes.length === 0) fetchHome(false)
+            else statusText = "Quick picks · refresh to update"
+        }
+    }
+
+    function toggleFull(): void {
+        if (open && popupMode === "full") { closePopup(); return }
+        if (justClosed("full")) return
+        openLibrary("home")
+    }
+
+    function nudgeVolume(delta): void {
+        setPlayerVolume(volumeLevel + delta)
+    }
+
+    // ---------- lyrics (lrclib.net, no key) ----------
+    function parseLrc(text): var {
+        const out = []
+        for (const raw of String(text).split("\n")) {
+            const m = raw.match(/^\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)$/)
+            if (m) out.push({ t: Number(m[1]) * 60 + Number(m[2]), text: m[3] || "♪" })
+        }
+        return out
+    }
+
+    function setLyricsMode(mode: string): void {
+        lyricsMode = mode
+        lyricsAlt = []
+        lyricsAltState = "idle"
+        if (mode !== "original") requestLyricsAlt()
+    }
+
+    function requestLyricsAlt(): void {
+        if (lyricsMode === "original" || lyricsLines.length === 0) return
+        lyricsAltState = "loading"
+        if (translateProc.running) { lyricsAltRetry = true; return }
+        const key = lyricsMode === "roman" ? "roman" : "en"
+        lyricsAltFor = lyricsTrackId + ":" + key
+        translateProc.exec(["python3", translateScript, key,
+            JSON.stringify(lyricsLines.map(function(line) { return line.text }))])
+    }
+
+    function handleLyricsAlt(text): void {
+        const key = lyricsMode === "roman" ? "roman" : "en"
+        if (lyricsAltFor !== lyricsTrackId + ":" + key) return
+        let data = null
+        try { data = JSON.parse(text) } catch (error) { data = null }
+        if (Array.isArray(data) && data.length === lyricsLines.length) {
+            lyricsAlt = data
+            lyricsAltState = "ready"
+        } else {
+            lyricsAltState = "failed"
+        }
+    }
+
+    function requestLyrics(): void {
+        if (!currentTrack) { lyricsState = "idle"; lyricsLines = []; return }
+        if (lyricsTrackId === currentTrack.id && lyricsState !== "idle") return
+        lyricsTrackId = currentTrack.id
+        lyricsLines = []
+        lyricsState = "loading"
+        if (lyricsProc.running) { lyricsRetry = true; return }
+        lyricsPendingId = currentTrack.id
+        const title = String(currentTrack.title || "")
+            .replace(/\s*[\(\[][^\)\]]*[\)\]]/g, "").replace(/\s+-\s+.*$/, "").trim() || String(currentTrack.title || "")
+        const artist = String(currentTrack.artist || "").split(/[,&·]/)[0].replace(/\s*-\s*topic$/i, "").trim()
+        lyricsProc.exec(["bash", lyricsScript, title, artist, String(Math.round(currentTrack.duration || 0))])
+    }
+
+    function handleLyrics(text): void {
+        if (!currentTrack || currentTrack.id !== lyricsPendingId) return
+        let data = null
+        try { data = JSON.parse(text) } catch (error) { data = null }
+        if (Array.isArray(data)) {
+            let pick = data.find(function(item) { return item && item.syncedLyrics })
+            if (!pick) pick = data.find(function(item) { return item && item.plainLyrics })
+            data = pick || null
+        }
+        if (data && data.syncedLyrics) {
+            const parsed = parseLrc(data.syncedLyrics)
+            if (parsed.length > 0) { lyricsLines = parsed; lyricsState = "ready"; return }
+        }
+        if (data && data.plainLyrics) {
+            lyricsLines = String(data.plainLyrics).split("\n").map(function(line) { return { t: -1, text: line } })
+            lyricsState = "plain"
+            return
+        }
+        lyricsLines = []
+        lyricsState = "none"
     }
 
     function runNextRequest(): void {
@@ -729,6 +854,7 @@ Scope {
         else statusText = "Added to the end of the queue"
     }
 
+
     function playQueueItem(index: int): void {
         if (index < 0 || index >= queue.length) return
         playTrack(queue[index], index)
@@ -843,13 +969,24 @@ Scope {
                 trackLoading = false
                 loadingStage = "idle"
                 statusText = "Playing from YouTube Music"
+                failStreak = 0
+                retryTrackId = ""
             } else if (message.event === "end-file" && message.reason === "error") {
                 loadTimeout.stop()
                 fileLoaded = false
                 playing = false
                 trackLoading = false
                 loadingStage = "idle"
-                statusText = "Playback failed. Try another song or refresh yt-dlp."
+                statusText = "Playback failed" + (message.file_error ? " (" + message.file_error + ")" : "") + ". Update yt-dlp and check a JS runtime (deno or node) is installed."
+                if (currentTrack && queueIndex >= 0 && retryTrackId !== currentTrack.id) {
+                    retryTrackId = currentTrack.id
+                    statusText = "yt-dlp hiccuped. Retrying this track once…"
+                    failRetryTimer.start()
+                } else if (failStreak < 3 && hasNextTrack()) {
+                    failStreak += 1
+                    statusText = "Could not play that track. Skipping to the next one…"
+                    failSkipTimer.start()
+                }
             } else if (message.event === "end-file" && message.reason === "eof") {
                 fileLoaded = false
                 trackLoading = false
@@ -895,6 +1032,50 @@ Scope {
         id: searchDebounce
         interval: 420
         onTriggered: root.performSearch()
+    }
+
+    Process {
+        id: lyricsProc
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: root.handleLyrics(this.text)
+        }
+        onExited: function(exitCode) {
+            if (root.lyricsRetry) {
+                root.lyricsRetry = false
+                Qt.callLater(function() { root.lyricsTrackId = ""; root.requestLyrics() })
+            } else if (root.lyricsState === "loading" && root.currentTrack && root.currentTrack.id === root.lyricsPendingId) {
+                root.lyricsState = "none"
+            }
+        }
+    }
+
+    Process {
+        id: translateProc
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: root.handleLyricsAlt(this.text)
+        }
+        onExited: function(exitCode) {
+            if (root.lyricsAltRetry) {
+                root.lyricsAltRetry = false
+                Qt.callLater(function() { root.requestLyricsAlt() })
+            } else if (exitCode !== 0 && root.lyricsAltState === "loading") {
+                root.lyricsAltState = "failed"
+            }
+        }
+    }
+
+    Timer {
+        id: failRetryTimer
+        interval: 700
+        onTriggered: { if (root.queueIndex >= 0) root.playQueueItem(root.queueIndex) }
+    }
+
+    Timer {
+        id: failSkipTimer
+        interval: 900
+        onTriggered: root.nextTrack()
     }
 
     Timer {
@@ -1007,11 +1188,14 @@ Scope {
 
     Process {
         id: playerProcess
+        // yt-dlp crashes on exit if the cookie folder does not exist, and mpv
+        // then reports the stream as failed. Create it before launching.
         command: [
-            "mpv", "--no-config", "--idle=yes", "--no-video", "--force-window=no",
-            "--terminal=no", "--input-ipc-server=" + root.ipcPath,
-            "--ytdl-format=bestaudio/best",
-            "--ytdl-raw-options=cookies=" + root.cookiePath
+            "bash", "-c",
+            "mkdir -p \"$(dirname \"$1\")\" && exec mpv --no-config --idle=yes --no-video --force-window=no "
+                + "--terminal=no --input-ipc-server=\"$2\" --ytdl-format=bestaudio/best --log-file=\"$2.log\" "
+                + "--ytdl-raw-options=cookies=\"$1\",extractor-retries=3,retries=5,socket-timeout=15",
+            "mpv-launcher", root.cookiePath, root.ipcPath
         ]
         running: false
         onStarted: {
@@ -1071,11 +1255,13 @@ Scope {
         HyprlandFocusGrab {
             active: root.open && root.popupMode === "full"
             windows: [playerPopup]
-            onCleared: root.scheduleClose()
+            onCleared: root.closePopup()
         }
 
         Rectangle {
             id: fullBody
+            focus: true
+            Keys.onEscapePressed: root.closePopup()
             anchors.fill: parent
             radius: 18
             opacity: playerPopup.shown ? 1 : 0
@@ -1087,9 +1273,6 @@ Scope {
             border.color: Qt.alpha(Colors.outline, 0.4)
             border.width: 1
 
-            HoverHandler {
-                onHoveredChanged: hovered ? root.holdOpen() : root.scheduleClose()
-            }
 
             // ---------- sidebar ----------
             Rectangle {
@@ -1126,6 +1309,7 @@ Scope {
 
                     Repeater {
                         model: [
+                            { id: "player", label: "Now playing", glyph: "♫" },
                             { id: "home", label: "Home", glyph: "⌂" },
                             { id: "library", label: "Library", glyph: "▤" },
                             { id: "search", label: "Search", glyph: "⌕" },
@@ -1163,6 +1347,7 @@ Scope {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
+                                    if (modelData.id === "player") { root.popupMode = "mini"; return }
                                     searchDebounce.stop()
                                     root.page = modelData.id
                                     if (modelData.id === "home" && root.homeCacheReady && root.quickPicks.length + root.homeMixes.length === 0) root.fetchHome(false)
@@ -1364,7 +1549,7 @@ Scope {
                                 width: 28
                                 horizontalAlignment: Text.AlignHCenter
                                 anchors.verticalCenter: parent.verticalCenter
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { popupCloseTimer.stop(); root.open = false } }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.closePopup() }
                             }
                         }
                     }
@@ -1642,7 +1827,7 @@ Scope {
                             Column {
                                 anchors.centerIn: parent
                                 spacing: 10
-                                visible: searchList.count === 0
+                                visible: searchList.count === 0 && !root.listLoading
 
                                 LoadingSpinner {
                                     width: 22
@@ -1658,6 +1843,13 @@ Scope {
                                     font.pixelSize: 11
                                 }
                             }
+
+                    Skeleton {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        visible: searchList.count === 0 && root.listLoading
+                    }
 
                     Rectangle {
                         id: dragGhost
@@ -1908,207 +2100,7 @@ Scope {
         }
     }
 
-    PopupWindow {
-        id: miniPopup
-        readonly property bool shown: root.open && root.popupMode === "mini"
-        visible: shown || miniBody.opacity > 0.01
-        anchor.item: root.anchorItem
-        anchor.edges: Edges.Bottom | Edges.Right
-        anchor.gravity: Edges.Bottom | Edges.Left
-        anchor.adjustment: PopupAdjustment.Flip | PopupAdjustment.Slide
-        implicitWidth: 360
-        implicitHeight: 528
-        color: "transparent"
-
-        HyprlandFocusGrab {
-            active: root.open && root.popupMode === "mini"
-            windows: [miniPopup]
-            onCleared: root.scheduleClose()
-        }
-
-        Rectangle {
-            id: miniBody
-            anchors.fill: parent
-            radius: 18
-            opacity: miniPopup.shown ? 1 : 0
-            scale: miniPopup.shown ? 1 : 0.96
-            transformOrigin: Item.TopRight
-            Behavior on opacity { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
-            Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-            color: Colors.surfaceContainer
-            border.color: Qt.alpha(Colors.outline, 0.4)
-            border.width: 1
-
-            HoverHandler {
-                onHoveredChanged: hovered ? root.holdOpen() : root.scheduleClose()
-            }
-
-            Column {
-                anchors.fill: parent
-                anchors.margins: 18
-                spacing: 12
-
-                Item {
-                    width: parent.width
-                    height: 24
-                    Text {
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.trackLoading ? "LOADING" : root.playing ? "NOW PLAYING" : "PAUSED"
-                        color: Colors.primary
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1.2
-                    }
-                    Rectangle {
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 78
-                        height: 24
-                        radius: 12
-                        color: openFullArea.containsMouse ? Qt.alpha(Colors.primary, 0.3) : Qt.alpha(Colors.primary, 0.15)
-                        Text { anchors.centerIn: parent; text: "Library"; color: Colors.primary; font.pixelSize: 10; font.bold: true }
-                        MouseArea {
-                            id: openFullArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.toggleFull()
-                        }
-                    }
-                }
-
-                Rectangle {
-                    width: 270
-                    height: 270
-                    radius: 18
-                    color: Colors.surfaceContainerHigh
-                    clip: true
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    scale: root.playing ? 1 : 0.94
-                    Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-                    Image {
-                        id: miniArtwork
-                        anchors.fill: parent
-                        source: root.currentTrack ? root.currentTrack.thumbnail : ""
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        visible: status === Image.Ready
-                    }
-                    Text { anchors.centerIn: parent; text: "♫"; color: Colors.primary; font.pixelSize: 72; visible: miniArtwork.status !== Image.Ready }
-                    Rectangle {
-                        anchors.fill: parent
-                        color: Qt.alpha(Colors.surface, 0.85)
-                        visible: root.trackLoading
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 10
-                            LoadingSpinner {
-                                width: 24
-                                height: 24
-                                dotSize: 6
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: root.loadingStage === "resolve" ? "Finding stream…" : root.loadingStage === "buffer" ? "Buffering…" : "Starting player…"
-                                color: Colors.fg
-                                font.pixelSize: 11
-                            }
-                        }
-                    }
-                }
-
-                Item {
-                    width: parent.width
-                    height: 44
-                    Column {
-                        anchors.left: parent.left
-                        anchors.right: likeButton.left
-                        anchors.rightMargin: 8
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 3
-                        Text {
-                            width: parent.width
-                            text: root.currentTrack ? root.currentTrack.title : "Nothing playing"
-                            color: Colors.fg
-                            font.pixelSize: 16
-                            font.bold: true
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            width: parent.width
-                            text: root.currentTrack ? root.currentTrack.artist : "Open the library to pick something"
-                            color: Colors.fgDim
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                        }
-                    }
-                    IconButton {
-                        id: likeButton
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        size: 20
-                        glyph: root.currentTrack && root.likedIds[root.currentTrack.id] ? "♥" : "♡"
-                        tint: root.currentTrack && root.likedIds[root.currentTrack.id] ? Colors.error : Colors.outline
-                        onClicked: root.toggleLike()
-                    }
-                }
-
-                Row {
-                    width: parent.width
-                    spacing: 8
-                    Text { text: root.formatTime(root.position); color: Colors.fgDim; font.pixelSize: 10; width: 30; anchors.verticalCenter: parent.verticalCenter }
-                    ThemedSlider {
-                        width: parent.width - 76
-                        from: 0
-                        to: Math.max(1, root.duration)
-                        value: Math.min(root.position, to)
-                        enabled: root.currentTrack !== null && root.duration > 0
-                        onMoved: root.sendMpv(["set_property", "time-pos", value])
-                    }
-                    Text { text: root.formatTime(root.duration); color: Colors.fgDim; font.pixelSize: 10; width: 30; horizontalAlignment: Text.AlignRight; anchors.verticalCenter: parent.verticalCenter }
-                }
-
-                Row {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 14
-                    IconButton { anchors.verticalCenter: parent.verticalCenter; glyph: "⤨"; size: 17; tint: root.shuffleEnabled ? Colors.primary : Colors.outline; onClicked: root.toggleShuffle() }
-                    IconButton { anchors.verticalCenter: parent.verticalCenter; glyph: "⏮"; size: 22; onClicked: root.previousTrack() }
-                    Rectangle {
-                        width: 52
-                        height: 52
-                        radius: 26
-                        color: playArea.pressed ? Qt.darker(Colors.primary, 1.2) : Colors.primary
-                        Text { anchors.centerIn: parent; text: root.playing ? "⏸" : "▶"; color: Colors.fgPrimary; font.pixelSize: 22 }
-                        MouseArea { id: playArea; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.togglePlayback() }
-                    }
-                    IconButton { anchors.verticalCenter: parent.verticalCenter; glyph: "⏭"; size: 22; onClicked: root.nextTrack() }
-                    IconButton { anchors.verticalCenter: parent.verticalCenter; glyph: root.repeatMode === 0 ? "↻" : root.repeatMode === 1 ? "↻¹" : "↻²"; size: 17; tint: root.repeatMode === 0 ? Colors.outline : Colors.primary; onClicked: root.cycleRepeat() }
-                }
-
-                Row {
-                    width: parent.width
-                    spacing: 8
-                    Text {
-                        text: root.muted ? "󰖁" : "󰕾"
-                        color: Colors.primary
-                        font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 15
-                        width: 22
-                        anchors.verticalCenter: parent.verticalCenter
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.sendMpv(["cycle", "mute"]) }
-                    }
-                    ThemedSlider {
-                        width: parent.width - 22 - 34 - 16
-                        from: 0
-                        to: 100
-                        value: root.volumeLevel
-                        onMoved: root.setPlayerVolume(value)
-                    }
-                    IconButton { anchors.verticalCenter: parent.verticalCenter; glyph: "∞"; size: 17; tint: root.autoplay ? Colors.primary : Colors.outline; onClicked: root.autoplay = !root.autoplay }
-                }
-            }
-        }
+    MiniPlayer {
+        player: root
     }
 }
