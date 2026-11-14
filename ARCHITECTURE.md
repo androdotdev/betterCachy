@@ -40,7 +40,7 @@ How the pieces fit together, what is tracked, and what is generated at runtime.
 ## Repository layout
 
 ```
-dotfiles/
+betterCachy/
 ├── README.md                  setup / restore instructions
 ├── ARCHITECTURE.md            this file
 ├── install.sh                 restores home/ into $HOME (with backup)
@@ -210,7 +210,7 @@ theme QML in `~/.config/sddm-matugen/theme/`, and the scripts in
 
 ## Restore flow
 
-`./install.sh` runs `rsync -a --backup --backup-dir=~/.dotfiles-backup/<ts>`
+`./install.sh` runs `rsync -a --backup --backup-dir=~/.betterCachy-backup/<ts>`
 from `home/` into `$HOME`, so the repo's tree maps 1:1 onto real paths. Nothing
 outside `home/` is touched; `system/` is only a reference. `--system` additionally
 runs the SDDM `install.sh` with `sudo`. After restoring, run `theme-apply` to

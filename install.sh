@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Restore this dotfiles repo into $HOME.
+# Restore this betterCachy repo into $HOME.
 #
 #   ./install.sh              copy home/ -> $HOME (existing files backed up)
 #   ./install.sh --dry-run    show what would change
 #   ./install.sh --system     also install the SDDM theme (uses sudo)
 #
 # Existing files that would be overwritten are preserved under
-# ~/.dotfiles-backup/<timestamp>/ with the same relative paths.
+# ~/.betterCachy-backup/<timestamp>/ with the same relative paths.
 set -euo pipefail
 
 REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-BACKUP_DIR="$HOME/.dotfiles-backup/$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="$HOME/.betterCachy-backup/$(date +%Y%m%d-%H%M%S)"
 DRY_RUN=false
 WITH_SYSTEM=false
 

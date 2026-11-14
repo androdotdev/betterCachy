@@ -1,4 +1,4 @@
-# dotfiles
+# betterCachy
 
 My CachyOS + Hyprland desktop setup: configs, theme pipeline, Quickshell bar, and a
 Matugen-powered SDDM login theme.
@@ -32,10 +32,10 @@ data. Re-add extra configs by copying them into `home/.config/<name>/`.
 ## Install (new machine)
 
 ```bash
-git clone <your-repo-url> ~/Projects/dotfiles
-cd ~/Projects/dotfiles
+git clone <your-repo-url> ~/Projects/betterCachy
+cd ~/Projects/betterCachy
 ./install.sh --dry-run     # preview
-./install.sh               # restore into $HOME (existing files -> ~/.dotfiles-backup/<date>)
+./install.sh               # restore into $HOME (existing files -> ~/.betterCachy-backup/<date>)
 ```
 
 ### 1. Packages
@@ -98,8 +98,8 @@ theme-apply -l ~/Pictures/new-wallpaper.jpg  # ...and hyprlock too
 ## Restoring the old versions
 
 Anything overwritten by `install.sh` is preserved under
-`~/.dotfiles-backup/<timestamp>/` using the same relative paths, e.g.
-`~/.dotfiles-backup/20261114-132000/.config/hypr/hyprland.lua`.
+`~/.betterCachy-backup/<timestamp>/` using the same relative paths, e.g.
+`~/.betterCachy-backup/20261114-132000/.config/hypr/hyprland.lua`.
 
 ## Notes
 
