@@ -63,10 +63,6 @@ to generate the colour palette from your chosen wallpaper.
 > Everything under `home/` mirrors real paths in `$HOME`. `system/` is a read-only
 > reference for root-owned files (SDDM only) and is **not** restored by `install.sh`.
 
-Deliberately **not** included (multi-GB data or machine-local): browser profiles, caches,
-SSH/GPG keys, OpenCode `service.json` (contains a password), wallpapers, and other
-app-local state. Re-add extras by copying them into `home/.config/<name>/`.
-
 ## Requirements
 
 - CachyOS / Arch Linux
@@ -76,10 +72,12 @@ app-local state. Re-add extras by copying them into `home/.config/<name>/`.
 ## Install (new machine)
 
 ```bash
-git clone <your-repo-url> ~/Projects/betterCachy
-cd ~/Projects/betterCachy
-./install.sh --dry-run     # preview what will change
-./install.sh               # restore into $HOME (existing files -> ~/.betterCachy-backup/<date>)
+git clone https://github.com/androdotdev/betterCachy /tmp/betterCachy
+cd /tmp/betterCachy
+
+less install.sh                 # inspect the installer
+./install.sh --dry-run          # preview changes
+./install.sh                   # install into $HOME
 ```
 
 ### 1. Packages
