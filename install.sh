@@ -148,7 +148,7 @@ if [[ "$WITH_SYSTEM" == true ]]; then
 
     if [[ -x "$SDDM_INSTALLER" ]]; then
         echo "Installing SDDM login theme (sudo)..."
-        sudo "$SDDM_INSTALLER"
+        sudo env "SDSM_HOME=$HOME" "$SDDM_INSTALLER"
     else
         echo "Warning: SDDM installer not found or not executable:"
         echo "  $SDDM_INSTALLER"

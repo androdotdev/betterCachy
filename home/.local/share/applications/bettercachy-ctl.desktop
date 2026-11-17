@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=betterCachy
+Comment=Control center for the betterCachy desktop
+Exec=bettercachy-ctl gui
+Icon=preferences-desktop-theme
+Categories=Settings;System;
+Terminal=false

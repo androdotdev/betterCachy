@@ -1,9 +1,0 @@
-[user]
-	name = androdotdev
-	email = androkingdom1@gmail.com
-[init]
-	defaultBranch = main
-[core]
-	editor = nvim
-[pull]
-	rebase = false

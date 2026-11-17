@@ -74,6 +74,10 @@ hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
 -- for security reasons
 
 -- hl.config({
+--  xwayland = {
+--    force_zero_scaling = true,
+-- },
+
 --   ecosystem = {
 --     enforce_permissions = true,
 --   },
@@ -272,7 +276,7 @@ local mainMod = "SUPER" -- Sets "Windows" key as main modifier
 
 -- custom keybind
 
-hl.bind("PRINT", hl.dsp.exec_cmd("grimblast --freeze save area - | swash --stdin --name Screenshot.png"))
+hl.bind("PRINT", hl.dsp.exec_cmd("hyprshot -m region --raw | swash --stdin"))
 
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("loginctl lock-session"))
 

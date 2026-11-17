@@ -17,8 +17,56 @@ Scope {
     property var clock: SystemClock { precision: SystemClock.Minutes }
     property int unreadCount: 0
     property string activePopup: ""
-    property bool doNotDisturb: persistentState.doNotDisturb
-    property var notificationHistory: []
+    property bool doNotDisturb: BarDatabase.doNotDisturb
+    property var notificationHistory: BarDatabase.notifications
+    property bool playerOpen: false
+    property bool barHoverRaw: false
+    property bool barHovered: false
+    property bool notchShown: !BarDatabase.notchAutoHide || BarDatabase.reserveSpace
+    property bool notchExpanded: barHovered || activePopup !== "" || playerOpen
+    readonly property bool notchAutoHide: BarDatabase.notchAutoHide && !BarDatabase.reserveSpace
+    readonly property bool notchKeepShown: !notchAutoHide || barHoverRaw || barHovered || activePopup !== "" || playerOpen
+
+    // Debounced hover: a short delay before expanding/revealing avoids flicker
+    // when the pointer crosses the bar, and a longer delay before collapsing
+    // keeps the bar open while the pointer moves between its widgets.
+    onBarHoverRawChanged: {
+        if (barHoverRaw) {
+            hoverCollapseTimer.stop()
+            hoverExpandTimer.restart()
+        } else {
+            hoverExpandTimer.stop()
+            hoverCollapseTimer.restart()
+        }
+    }
+
+    Timer {
+        id: hoverExpandTimer
+        interval: 45
+        onTriggered: if (root.barHoverRaw) root.barHovered = true
+    }
+    Timer {
+        id: hoverCollapseTimer
+        interval: 150
+        onTriggered: if (!root.barHoverRaw) root.barHovered = false
+    }
+
+    onNotchAutoHideChanged: notchShown = notchKeepShown
+    onNotchKeepShownChanged: {
+        if (notchKeepShown) {
+            notchShown = true
+            notchHideTimer.stop()
+        } else {
+            notchHideTimer.restart()
+        }
+    }
+    Component.onCompleted: notchShown = notchKeepShown
+
+    Timer {
+        id: notchHideTimer
+        interval: 260
+        onTriggered: if (!root.notchKeepShown) root.notchShown = false
+    }
     property var notificationToasts: []
     property real toastProgress: 1
     property bool toastHovered: false
@@ -40,12 +88,6 @@ Scope {
         return players[0]
     }
 
-    PersistentProperties {
-        id: persistentState
-        reloadableId: "bar-preferences"
-        property bool doNotDisturb: false
-    }
-
     NotificationServer {
         id: notificationServer
         keepOnReload: false
@@ -58,8 +100,7 @@ Scope {
                 summary: notification.summary || "",
                 body: notification.body || ""
             }
-            const history = [entry, ...root.notificationHistory].slice(0, 20)
-            root.notificationHistory = history
+            BarDatabase.addNotification(entry)
             if (!root.doNotDisturb) {
                 root.notificationToasts = [entry, ...root.notificationToasts].slice(0, 2)
                 toastCountdown.stop()
@@ -93,7 +134,7 @@ Scope {
     function runPowerAction(action: string): void {
         root.activePopup = ""
         if (action === "lock") Quickshell.execDetached(["hyprlock"])
-        else if (action === "logout") Quickshell.execDetached(["hyprctl", "dispatch", "exit"])
+        else if (action === "logout") Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.exit()"])
         else if (action === "reboot") Quickshell.execDetached(["systemctl", "reboot"])
         else if (action === "shutdown") Quickshell.execDetached(["systemctl", "poweroff"])
     }
@@ -122,433 +163,585 @@ Scope {
             required property var modelData
             screen: modelData
             anchors { top: true; left: true; right: true }
-            implicitHeight: 40
-            color: Qt.alpha(Colors.surface, 0.53)
+            implicitHeight: 36
+            color: "transparent"
+            exclusionMode: BarDatabase.reserveSpace ? ExclusionMode.Auto : ExclusionMode.Ignore
+            mask: Region {
+                x: 0
+                y: 0
+                width: panel.width
+                height: root.notchShown ? panel.implicitHeight : 5
+            }
 
-            Rectangle {
+            Item {
+                id: hoverArea
                 anchors.fill: parent
-                color: "transparent"
 
-                Row {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 5
+                Rectangle {
+                    id: notch
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: root.notchShown ? 2 : -40
+                    opacity: root.notchShown ? 1 : 0
+                    Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: 160 } }
+                    width: root.notchExpanded ? Math.min(panel.width - 60, 1180) : 340
+                    height: 32
+                    radius: 16
+                    color: Colors.surfaceContainer
+                    border.color: Qt.alpha(Colors.outline, 0.35)
+                    border.width: 1
+                    clip: true
+                    Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
 
-                    Repeater {
-                        model: root.workspaceEntries
-                        delegate: Rectangle {
-                            required property var modelData
-                            readonly property bool numericSlot: typeof modelData === "number"
-                            readonly property int workspaceId: numericSlot ? modelData : modelData.id
-                            readonly property var workspace: numericSlot
-                                ? (Hyprland.workspaces.values.find(function(item) { return item.id === workspaceId }) || null)
-                                : modelData
-                            readonly property bool focused: workspace !== null && workspace.focused
-                            readonly property bool urgent: workspace !== null && workspace.urgent
-                            width: focused ? 32 : 26
-                            height: 26
-                            radius: 8
-                            color: focused ? Colors.primary : (urgent ? Qt.alpha(Colors.error, 0.15) : (workspace ? Colors.surfaceContainer : Colors.surface))
-                            Text {
-                                anchors.centerIn: parent
-                                text: parent.numericSlot ? parent.workspaceId : (parent.workspace.name || parent.workspaceId)
-                                color: parent.focused ? Colors.fgPrimary : (parent.workspace ? Colors.fg : Colors.outline)
-                                font.pixelSize: 11
-                                font.bold: parent.focused
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    if (parent.workspace) parent.workspace.activate()
-                                    else Hyprland.dispatch("workspace " + parent.workspaceId)
-                                }
-                            }
-                        }
-                    }
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 5
+                        opacity: root.notchExpanded ? 1 : 0
+                        visible: opacity > 0
+                        enabled: root.notchExpanded
+                        Behavior on opacity { NumberAnimation { duration: 140 } }
 
-                    Rectangle {
-                        visible: SystemTray.items.values.length > 0
-                        width: trayIcons.implicitWidth + 10
-                        height: 30
-                        radius: 9
-                        color: Colors.surfaceContainer
-
-                        Row {
-                            id: trayIcons
-                            anchors.centerIn: parent
-                            spacing: 2
-                            Repeater {
-                                model: SystemTray.items
-                                delegate: MouseArea {
-                                    id: trayDelegate
-                                    required property var modelData
-                                    width: 24
-                                    height: 26
-                                    acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-                                    hoverEnabled: true
-                                    ToolTip.visible: containsMouse && (modelData.tooltipTitle || modelData.title)
-                                    ToolTip.text: modelData.tooltipTitle || modelData.title
-                                    onClicked: function(mouse) {
-                                        root.activePopup = ""
-                                        if (mouse.button === Qt.LeftButton) modelData.activate()
-                                        else if (mouse.button === Qt.MiddleButton) modelData.secondaryActivate()
-                                        else if (mouse.button === Qt.RightButton && modelData.hasMenu) trayMenu.open()
-                                    }
-                                    IconImage {
-                                        anchors.centerIn: parent
-                                        source: trayDelegate.modelData.icon
-                                        implicitSize: 18
-                                    }
-                                    QsMenuAnchor {
-                                        id: trayMenu
-                                        menu: trayDelegate.modelData.menu
-                                        anchor.window: trayDelegate.QsWindow.window
-                                        anchor.adjustment: PopupAdjustment.Flip
-                                        anchor.onAnchoring: {
-                                            const win = trayDelegate.QsWindow.window
-                                            trayMenu.anchor.rect = win.contentItem.mapFromItem(trayDelegate, 0, trayDelegate.height, trayDelegate.width, trayDelegate.height)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Row {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 7
-
-                    Rectangle {
-                        id: ytmusicButton
-                        readonly property int barCount: ytMusicPlayer.cavaBarCount
-                        readonly property real barWidth: 2
-                        readonly property real barGap: 2
-                        readonly property real vizPad: 9
-                        readonly property real barsWidth: barCount * barWidth + (barCount - 1) * barGap
-                        readonly property real vizWidth: barsWidth + vizPad * 2
-                        readonly property bool vizActive: ytMusicPlayer.playing
-
-                        width: 30 + (vizActive ? vizWidth : 0)
-                        height: 30
-                        radius: 9
-                        clip: true
-                        color: ytmusicMouse.containsMouse || ytMusicPlayer.open ? Colors.surfaceContainerHigh : Colors.surfaceContainer
-                        Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-
-                        // Visualizer sits to the LEFT of the glyph. The glyph stays
-                        // pinned to the right edge so the capsule opens leftward and
-                        // the bars are revealed from right to left.
-                        Item {
-                            id: ytmusicViz
-                            x: 0
-                            width: Math.max(0, parent.width - 30)
-                            height: parent.height
-                            clip: true
-
-                            Row {
-                                id: ytmusicBars
-                                anchors.right: parent.right
-                                anchors.rightMargin: ytmusicButton.vizPad
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: ytmusicButton.barGap
-                                Repeater {
-                                    model: ytmusicButton.barCount
-                                    delegate: Item {
-                                        required property int index
-                                        width: ytmusicButton.barWidth
-                                        height: 24
-                                        Rectangle {
-                                            width: parent.width
-                                            anchors.horizontalCenter: parent.horizontalCenter
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            height: {
-                                                // Left-right mirror: reflect the spectrum around
-                                                // the centre so both halves are identical.
-                                                const src = Math.min(index, ytmusicButton.barCount - 1 - index)
-                                                const value = ytMusicPlayer.cavaBars[src] || 0
-                                                return Math.max(2, Math.min(1, value / 1000) * 16)
-                                            }
-                                            radius: width / 2
-                                            color: Colors.primary
-                                            Behavior on height { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Text {
-                            id: ytmusicGlyph
-                            anchors.right: parent.right
-                            width: 30
-                            height: parent.height
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            text: "♫"
-                            color: ytmusicMouse.containsMouse || ytMusicPlayer.open ? Colors.primary : Colors.fg
-                            font.pixelSize: 16
-                        }
-
-                        MouseArea {
-                            id: ytmusicMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: function(mouse) {
-                                root.activePopup = ""
-                                if (mouse.button === Qt.RightButton) ytMusicPlayer.toggleFull()
-                                else if (mouse.button === Qt.MiddleButton) ytMusicPlayer.togglePlayback()
-                                else ytMusicPlayer.toggleMini()
-                            }
-                            onWheel: function(wheel) {
-                                ytMusicPlayer.nudgeVolume(wheel.angleDelta.y > 0 ? 5 : -5)
-                            }
-                        }
-                    }
-
-                    QuickSettings {
-                        id: quickSettings
-                        anchorItem: settingsButton
-                        open: root.activePopup === "settings"
-                        onPopupEntered: popupCloseTimer.stop()
-                        onPopupLeft: root.deferPopupClose()
-                    }
-
-                    Rectangle {
-                        id: settingsButton
-                        color: root.activePopup === "settings" || settingsMouse.containsMouse ? Colors.surfaceContainerHigh : Colors.surfaceContainer
-                        radius: 9
-                        width: 32
-                        height: 28
-                        scale: settingsMouse.pressed ? 0.92 : 1
-                        Behavior on color { ColorAnimation { duration: 120 } }
-                        Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
-                        Text {
-                            id: settingsLabel
-                            anchors.centerIn: parent
-                            text: Networking.wifiEnabled ? "󰖩" : "󰤭"
-                            color: settingsMouse.containsMouse || root.activePopup === "settings" ? Colors.primary : Colors.fg
-                            font.pixelSize: 15
-                            font.family: "JetBrainsMono Nerd Font"
-                        }
-                        MouseArea {
-                            id: settingsMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.activePopup = root.activePopup === "settings" ? "" : "settings"
-                            onExited: if (root.activePopup === "settings") root.deferPopupClose()
-                        }
-                    }
-
-                    Rectangle {
-                        visible: root.batteryDevice !== null && root.batteryDevice.ready
-                        color: Colors.surfaceContainer
-                        radius: 9
-                        width: batteryText.implicitWidth + 16
-                        height: 30
-                        Text {
-                            id: batteryText
-                            anchors.centerIn: parent
-                            text: {
-                                const state = root.batteryDevice.state
-                                const percentage = root.batteryDevice.percentage
-                                const percent = Math.round(percentage <= 1 ? percentage * 100 : percentage)
-                        const charging = state === UPowerDeviceState.Charging
-                            || state === UPowerDeviceState.PendingCharge
-                            || !UPower.onBattery
-                        const icon = charging ? "󰂄" : "󰂎"
-                        return icon + " " + percent + "%"
-                            }
-                            color: Colors.secondary
-                            font.pixelSize: 11
-                    font.family: "JetBrainsMono Nerd Font"
-                        }
-                    }
-
-                    NotificationList {
-                        id: notificationList
-                        notifications: root.notificationHistory
-                        anchorItem: bellButton
-                        open: root.activePopup === "notifications"
-                        doNotDisturb: root.doNotDisturb
-                        onOpened: root.unreadCount = 0
-                        onDoNotDisturbToggled: {
-                            persistentState.doNotDisturb = !persistentState.doNotDisturb
-                            if (persistentState.doNotDisturb) {
-                                toastCountdown.stop()
-                                root.notificationToasts = []
-                            }
-                        }
-                        onPopupEntered: popupCloseTimer.stop()
-                        onPopupLeft: root.deferPopupClose()
-                    }
-
-                    Rectangle {
-                        id: infoCapsule
-                        width: infoContents.implicitWidth + 20
-                        height: 30
-                        radius: 9
-                        color: Colors.surfaceContainer
-
-                        Row {
-                            id: infoContents
-                            anchors.centerIn: parent
-                            spacing: 10
-                            Text {
-                                id: bellButton
-                                text: "󰂚"
-                                color: root.unreadCount > 0 ? Colors.error : Colors.fg
-                                font.pixelSize: 13
-                                anchors.verticalCenter: parent.verticalCenter
-                                Rectangle {
-                                    visible: root.unreadCount > 0
-                                    width: 6
-                                    height: 6
-                                    radius: 3
-                                    color: Colors.error
-                                    anchors.right: parent.right
-                                    anchors.top: parent.top
+                        Repeater {
+                            model: root.workspaceEntries
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool numericSlot: typeof modelData === "number"
+                                readonly property int workspaceId: numericSlot ? modelData : modelData.id
+                                readonly property var workspace: numericSlot
+                                    ? (Hyprland.workspaces.values.find(function(item) { return item.id === workspaceId }) || null)
+                                    : modelData
+                                readonly property bool focused: workspace !== null && workspace.focused
+                                readonly property bool urgent: workspace !== null && workspace.urgent
+                                width: focused ? 32 : 26
+                                height: 26
+                                radius: height / 2
+                                color: focused ? Colors.primary : (urgent ? Qt.alpha(Colors.error, 0.15) : (workspace ? Colors.surfaceContainer : Colors.surface))
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: parent.numericSlot ? parent.workspaceId : (parent.workspace.name || parent.workspaceId)
+                                    color: parent.focused ? Colors.fgPrimary : (parent.workspace ? Colors.fg : Colors.outline)
+                                    font.pixelSize: 11
+                                    font.bold: parent.focused
                                 }
                                 MouseArea {
                                     anchors.fill: parent
                                     hoverEnabled: true
-                                    onClicked: root.activePopup = root.activePopup === "notifications" ? "" : "notifications"
-                                    onExited: if (root.activePopup === "notifications") root.deferPopupClose()
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        const target = parent.numericSlot ? parent.workspaceId : parent.workspace.name
+                                        if (Hyprland.usingLua) {
+                                            const value = typeof target === "number"
+                                                ? target
+                                                : "\"" + String(target).replace(/"/g, "\\\"") + "\""
+                                            Hyprland.dispatch("hl.dsp.focus({ workspace = " + value + " })")
+                                        } else {
+                                            Hyprland.dispatch("workspace " + target)
+                                        }
+                                    }
                                 }
                             }
+                        }
+
+                        Rectangle {
+                            visible: SystemTray.items.values.length > 0
+                            width: trayIcons.implicitWidth + 10
+                            height: 30
+                            radius: height / 2
+                            color: Colors.surfaceContainer
+
+                            Row {
+                                id: trayIcons
+                                anchors.centerIn: parent
+                                spacing: 2
+                                Repeater {
+                                    model: SystemTray.items
+                                    delegate: MouseArea {
+                                        id: trayDelegate
+                                        required property var modelData
+                                        width: 24
+                                        height: 26
+                                        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        ToolTip.visible: containsMouse && (modelData.tooltipTitle || modelData.title)
+                                        ToolTip.text: modelData.tooltipTitle || modelData.title || modelData.id
+                                        ToolTip.delay: 500
+                                        onClicked: function(mouse) {
+                                            root.activePopup = ""
+                                            if (mouse.button === Qt.LeftButton) {
+                                                if (modelData.onlyMenu && modelData.hasMenu) trayMenu.open()
+                                                else modelData.activate()
+                                            } else if (mouse.button === Qt.MiddleButton) {
+                                                modelData.secondaryActivate()
+                                            } else if (mouse.button === Qt.RightButton && modelData.hasMenu) {
+                                                trayMenu.open()
+                                            }
+                                        }
+                                        onWheel: function(wheel) {
+                                            modelData.scroll(wheel.angleDelta.y, wheel.angleDelta.x !== 0)
+                                        }
+                                        IconImage {
+                                            anchors.centerIn: parent
+                                            source: trayDelegate.modelData.icon
+                                            implicitSize: 18
+                                        }
+                                        QsMenuAnchor {
+                                            id: trayMenu
+                                            menu: trayDelegate.modelData.menu
+                                            anchor.item: trayDelegate
+                                            anchor.edges: Edges.Bottom
+                                            anchor.gravity: Edges.Bottom
+                                            anchor.adjustment: PopupAdjustment.Flip | PopupAdjustment.Slide
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Row {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 7
+                        opacity: root.notchExpanded ? 1 : 0
+                        visible: opacity > 0
+                        enabled: root.notchExpanded
+                        Behavior on opacity { NumberAnimation { duration: 140 } }
+
+                        Rectangle {
+                            id: ytmusicButton
+                            readonly property int barCount: ytMusicPlayer.cavaBarCount
+                            readonly property real barWidth: 2
+                            readonly property real barGap: 2
+                            readonly property real vizPad: 9
+                            readonly property real barsWidth: barCount * barWidth + (barCount - 1) * barGap
+                            readonly property real vizWidth: barsWidth + vizPad * 2
+                            readonly property bool vizActive: ytMusicPlayer.playing
+
+                            width: 30 + (vizActive ? vizWidth : 0)
+                            height: 30
+                            radius: height / 2
+                            clip: true
+                            color: ytmusicMouse.containsMouse || ytMusicPlayer.open ? Colors.surfaceContainerHigh : Colors.surfaceContainer
+                            Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+
+                            // Visualizer sits to the LEFT of the glyph. The glyph stays
+                            // pinned to the right edge so the capsule opens leftward and
+                            // the bars are revealed from right to left.
+                            Item {
+                                id: ytmusicViz
+                                x: 0
+                                width: Math.max(0, parent.width - 30)
+                                height: parent.height
+                                clip: true
+
+                                Row {
+                                    id: ytmusicBars
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: ytmusicButton.vizPad
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: ytmusicButton.barGap
+                                    Repeater {
+                                        model: ytmusicButton.barCount
+                                        delegate: Item {
+                                            required property int index
+                                            width: ytmusicButton.barWidth
+                                            height: 24
+                                            Rectangle {
+                                                width: parent.width
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                height: {
+                                                    // Left-right mirror: reflect the spectrum around
+                                                    // the centre so both halves are identical.
+                                                    const src = Math.min(index, ytmusicButton.barCount - 1 - index)
+                                                    const value = ytMusicPlayer.cavaBars[src] || 0
+                                                    return Math.max(2, Math.min(1, value / 1000) * 16)
+                                                }
+                                                radius: width / 2
+                                                color: Colors.primary
+                                                Behavior on height { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             Text {
-                                text: Qt.formatDateTime(root.clock.date, "ddd, d MMM  HH:mm")
+                                id: ytmusicGlyph
+                                anchors.right: parent.right
+                                width: 30
+                                height: parent.height
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                text: "♫"
+                                color: ytmusicMouse.containsMouse || ytMusicPlayer.open ? Colors.primary : Colors.fg
+                                font.pixelSize: 16
+                            }
+
+                            MouseArea {
+                                id: ytmusicMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: function(mouse) {
+                                    root.activePopup = ""
+                                    if (mouse.button === Qt.RightButton) ytMusicPlayer.toggleFull()
+                                    else if (mouse.button === Qt.MiddleButton) ytMusicPlayer.togglePlayback()
+                                    else ytMusicPlayer.toggleMini()
+                                }
+                                onWheel: function(wheel) {
+                                    ytMusicPlayer.nudgeVolume(wheel.angleDelta.y > 0 ? 5 : -5)
+                                }
+                            }
+                        }
+
+                        QuickSettings {
+                            id: quickSettings
+                            anchorItem: settingsButton
+                            open: root.activePopup === "settings"
+                            onPopupEntered: popupCloseTimer.stop()
+                            onPopupLeft: root.deferPopupClose()
+                        }
+
+                        Rectangle {
+                            id: settingsButton
+                            color: root.activePopup === "settings" || settingsMouse.containsMouse ? Colors.surfaceContainerHigh : Colors.surfaceContainer
+                            radius: height / 2
+                            width: 32
+                            height: 28
+                            scale: settingsMouse.pressed ? 0.92 : 1
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                            Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+                            Text {
+                                id: settingsLabel
+                                anchors.centerIn: parent
+                                text: Networking.wifiEnabled ? "󰖩" : "󰤭"
+                                color: settingsMouse.containsMouse || root.activePopup === "settings" ? Colors.primary : Colors.fg
+                                font.pixelSize: 15
+                                font.family: "JetBrainsMono Nerd Font"
+                            }
+                            MouseArea {
+                                id: settingsMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.activePopup = root.activePopup === "settings" ? "" : "settings"
+                                onExited: if (root.activePopup === "settings") root.deferPopupClose()
+                            }
+                        }
+
+                        Rectangle {
+                            visible: root.batteryDevice !== null && root.batteryDevice.ready
+                            color: Colors.surfaceContainer
+                            radius: height / 2
+                            width: batteryText.implicitWidth + 16
+                            height: 30
+                            Text {
+                                id: batteryText
+                                anchors.centerIn: parent
+                                text: {
+                                    const device = root.batteryDevice
+                                    if (!device || !device.ready) return ""
+                                    const state = device.state
+                                    const percentage = device.percentage
+                                    const percent = Math.round(percentage <= 1 ? percentage * 100 : percentage)
+                                    const charging = state === UPowerDeviceState.Charging
+                                        || state === UPowerDeviceState.PendingCharge
+                                        || !UPower.onBattery
+                                    const icon = charging ? "󰂄" : "󰂎"
+                                    return icon + " " + percent + "%"
+                                }
+                                color: Colors.secondary
+                                font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                            }
+                        }
+
+                        NotificationList {
+                            id: notificationList
+                            notifications: root.notificationHistory
+                            anchorItem: bellButton
+                            open: root.activePopup === "notifications"
+                            doNotDisturb: root.doNotDisturb
+                            onOpened: root.unreadCount = 0
+                            onDoNotDisturbToggled: {
+                                BarDatabase.doNotDisturb = !BarDatabase.doNotDisturb
+                                if (BarDatabase.doNotDisturb) {
+                                    toastCountdown.stop()
+                                    root.notificationToasts = []
+                                }
+                            }
+                            onPopupEntered: popupCloseTimer.stop()
+                            onPopupLeft: root.deferPopupClose()
+                        }
+
+                        Rectangle {
+                            id: infoCapsule
+                            width: infoContents.implicitWidth + 20
+                            height: 30
+                            radius: height / 2
+                            color: Colors.surfaceContainer
+
+                            Row {
+                                id: infoContents
+                                anchors.centerIn: parent
+                                spacing: 10
+                                Text {
+                                    id: bellButton
+                                    text: "󰂚"
+                                    color: root.unreadCount > 0 ? Colors.error : Colors.fg
+                                    font.pixelSize: 13
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Rectangle {
+                                        visible: root.unreadCount > 0
+                                        width: 6
+                                        height: 6
+                                        radius: 3
+                                        color: Colors.error
+                                        anchors.right: parent.right
+                                        anchors.top: parent.top
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onClicked: root.activePopup = root.activePopup === "notifications" ? "" : "notifications"
+                                        onExited: if (root.activePopup === "notifications") root.deferPopupClose()
+                                    }
+                                }
+                                Text {
+                                    id: clockText
+                                    text: Qt.formatDateTime(root.clock.date, "ddd, d MMM  HH:mm")
+                                    color: clockArea.containsMouse ? Colors.primary : Colors.fg
+                                    font.pixelSize: 11
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    MouseArea {
+                                        id: clockArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.activePopup = root.activePopup === "calendar" ? "" : "calendar"
+                                        onExited: if (root.activePopup === "calendar") root.deferPopupClose()
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            id: powerButton
+                            width: 30
+                            height: 30
+                            radius: height / 2
+                            color: root.activePopup === "power" ? Qt.alpha(Colors.outline, 0.4) : Colors.surfaceContainer
+                            Text {
+                                anchors.centerIn: parent
+                                text: "⏻"
+                                color: Colors.error
+                                font.pixelSize: 16
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: root.activePopup = root.activePopup === "power" ? "" : "power"
+                                onExited: if (root.activePopup === "power") root.deferPopupClose()
+                            }
+                        }
+                    }
+
+                    MusicPlayer {
+                        id: ytMusicPlayer
+                        anchorItem: ytmusicButton
+                        onOpenChanged: root.playerOpen = open
+                        Component.onCompleted: root.playerOpen = open
+                    }
+
+                    CalendarPopup {
+                        id: calendarPopup
+                        anchorItem: clockText
+                        open: root.activePopup === "calendar"
+                        onPopupEntered: popupCloseTimer.stop()
+                        onPopupLeft: root.deferPopupClose()
+                    }
+
+                    PopupWindow {
+                        id: powerPopup
+                        visible: root.activePopup === "power"
+                        anchor.item: powerButton
+                        anchor.edges: Edges.Bottom | Edges.Right
+                        anchor.gravity: Edges.Bottom | Edges.Left
+                        anchor.adjustment: PopupAdjustment.Flip | PopupAdjustment.Slide
+                        implicitWidth: 170
+                        implicitHeight: 176
+                        color: "transparent"
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 12
+                            color: Colors.surfaceContainer
+                            border.color: Qt.alpha(Colors.outline, 0.4)
+                            border.width: 1
+                            HoverHandler {
+                                onHoveredChanged: hovered ? popupCloseTimer.stop() : root.deferPopupClose()
+                            }
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 4
+                                Repeater {
+                                    model: [
+                                        { label: "Lock", action: "lock", icon: "" },
+                                        { label: "Log out", action: "logout", icon: "" },
+                                        { label: "Reboot", action: "reboot", icon: "" },
+                                        { label: "Shut down", action: "shutdown", icon: "" }
+                                    ]
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        width: parent.width
+                                        height: 34
+                                        radius: 7
+                                        color: powerActionArea.containsMouse ? Colors.surfaceContainerHigh : "transparent"
+                                        Row {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 9
+                                            spacing: 9
+                                            Text { text: modelData.icon; color: Colors.fgDim; font.family: "JetBrainsMono Nerd Font"; anchors.verticalCenter: parent.verticalCenter }
+                                            Text { text: modelData.label; color: Colors.fg; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                                        }
+                                        MouseArea {
+                                            id: powerActionArea
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            onClicked: root.runPowerAction(modelData.action)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: mediaWidget
+                        visible: root.notchExpanded && (root.activePlayer !== null || opacity > 0)
+                        opacity: (root.activePlayer !== null ? 1 : 0) * (root.notchExpanded ? 1 : 0)
+                        scale: root.activePlayer !== null ? 1 : 0.94
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 220
+                        height: 28
+                        color: Colors.surfaceContainer
+                        radius: height / 2
+                        Behavior on opacity {
+                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                        }
+                        Behavior on scale {
+                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                        }
+                        Text {
+                            id: mediaText
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            verticalAlignment: Text.AlignVCenter
+                            horizontalAlignment: Text.AlignHCenter
+                            text: root.activePlayer ? "♫  " + (root.activePlayer.trackTitle || root.activePlayer.trackArtist || "Media") : ""
+                            color: Colors.primary
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: root.activePopup = root.activePopup === "media" ? "" : "media"
+                            onExited: if (root.activePopup === "media") root.deferPopupClose()
+                        }
+                    }
+
+                    Item {
+                        id: compactContent
+                        anchors.fill: parent
+                        opacity: root.notchExpanded ? 0 : 1
+                        visible: opacity > 0
+                        enabled: false
+                        Behavior on opacity { NumberAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 10
+
+                            Row {
+                                visible: ytMusicPlayer.playing
+                                spacing: 2
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                Repeater {
+                                    model: 10
+                                    delegate: Rectangle {
+                                        required property int index
+                                        width: 2
+                                        radius: 1
+                                        color: Colors.primary
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        height: {
+                                            const src = Math.min(index, 9 - index)
+                                            const value = ytMusicPlayer.cavaBars[src] || 0
+                                            return Math.max(2, Math.min(1, value / 1000) * 13)
+                                        }
+                                        Behavior on height { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                visible: ytMusicPlayer.playing
+                                text: "♫"
+                                color: Colors.primary
+                                font.pixelSize: 13
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: Qt.formatDateTime(root.clock.date, "HH:mm")
                                 color: Colors.fg
+                                font.pixelSize: 13
+                                font.bold: true
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: Qt.formatDateTime(root.clock.date, "ddd, d MMM")
+                                color: Colors.fgDim
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                visible: root.batteryDevice !== null && root.batteryDevice.ready
+                                text: {
+                                    const device = root.batteryDevice
+                                    if (!device) return ""
+                                    const percent = Math.round(device.percentage <= 1 ? device.percentage * 100 : device.percentage)
+                                    const charging = device.state === UPowerDeviceState.Charging
+                                        || device.state === UPowerDeviceState.PendingCharge
+                                        || !UPower.onBattery
+                                    return (charging ? "󰂄 " : "󰂎 ") + percent + "%"
+                                }
+                                color: Colors.secondary
                                 font.pixelSize: 11
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                         }
                     }
-
-                    Rectangle {
-                        id: powerButton
-                        width: 30
-                        height: 30
-                        radius: 9
-                        color: root.activePopup === "power" ? Qt.alpha(Colors.outline, 0.4) : Colors.surfaceContainer
-                        Text {
-                            anchors.centerIn: parent
-                            text: "⏻"
-                            color: Colors.error
-                            font.pixelSize: 16
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: root.activePopup = root.activePopup === "power" ? "" : "power"
-                            onExited: if (root.activePopup === "power") root.deferPopupClose()
-                        }
-                    }
                 }
+            }
 
-                MusicPlayer {
-                    id: ytMusicPlayer
-                    anchorItem: ytmusicButton
-                }
-
-                PopupWindow {
-                    id: powerPopup
-                    visible: root.activePopup === "power"
-                    anchor.item: powerButton
-                    anchor.edges: Edges.Bottom | Edges.Right
-                    anchor.gravity: Edges.Bottom | Edges.Left
-                    anchor.adjustment: PopupAdjustment.Flip | PopupAdjustment.Slide
-                    implicitWidth: 170
-                    implicitHeight: 176
-                    color: "transparent"
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 12
-                        color: Colors.surfaceContainer
-                        border.color: Qt.alpha(Colors.outline, 0.4)
-                        border.width: 1
-                        HoverHandler {
-                            onHoveredChanged: hovered ? popupCloseTimer.stop() : root.deferPopupClose()
-                        }
-                        Column {
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            spacing: 4
-                            Repeater {
-                                model: [
-                                    { label: "Lock", action: "lock", icon: "" },
-                                    { label: "Log out", action: "logout", icon: "" },
-                                    { label: "Reboot", action: "reboot", icon: "" },
-                                    { label: "Shut down", action: "shutdown", icon: "" }
-                                ]
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    width: parent.width
-                                    height: 34
-                                    radius: 7
-                                    color: powerActionArea.containsMouse ? Colors.surfaceContainerHigh : "transparent"
-                                    Row {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 9
-                                        spacing: 9
-                                        Text { text: modelData.icon; color: Colors.fgDim; font.family: "JetBrainsMono Nerd Font"; anchors.verticalCenter: parent.verticalCenter }
-                                        Text { text: modelData.label; color: Colors.fg; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
-                                    }
-                                    MouseArea {
-                                        id: powerActionArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: root.runPowerAction(modelData.action)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Rectangle {
-                    id: mediaWidget
-                    visible: root.activePlayer !== null || opacity > 0
-                    opacity: root.activePlayer !== null ? 1 : 0
-                    scale: root.activePlayer !== null ? 1 : 0.94
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 220
-                    height: 28
-                    color: Colors.surfaceContainer
-                    radius: 9
-                    Behavior on opacity {
-                        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-                    }
-                    Behavior on scale {
-                        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-                    }
-                    Text {
-                        id: mediaText
-                        anchors.fill: parent
-                        anchors.leftMargin: 10
-                        anchors.rightMargin: 10
-                        verticalAlignment: Text.AlignVCenter
-                        horizontalAlignment: Text.AlignHCenter
-                        text: root.activePlayer ? "♫  " + (root.activePlayer.trackTitle || root.activePlayer.trackArtist || "Media") : ""
-                        color: Colors.primary
-                        font.pixelSize: 12
-                        elide: Text.ElideRight
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: root.activePopup = root.activePopup === "media" ? "" : "media"
-                        onExited: if (root.activePopup === "media") root.deferPopupClose()
-                    }
-                }
+            // Passive hover sensor above the bar content. HoverHandlers do not
+            // accept pointer events, so clicks still reach the widgets below.
+            Item {
+                id: hoverSensor
+                anchors.fill: parent
+                z: 1000
+                HoverHandler { onHoveredChanged: root.barHoverRaw = hovered }
             }
 
             PopupWindow {

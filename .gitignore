@@ -1,10 +1,22 @@
-# Runtime state, generated wallpaper copy, local backups
-home/.config/sddm-matugen/background
-.dotfiles-backup/
-*.log
+__pycache__/
+.venv/
+*.pyc
 
-# Caches / machine-local junk that may be recreated by apps
-home/.config/kando/session/
-**/Cache/
-**/GPUCache/
-**/.cache/
+# Generated from the wallpaper — recreated by theme-apply / matugen.
+home/.config/quickshell/colors.json
+home/.config/hypr/colors.conf
+home/.config/hypr/hyprpaper.conf
+home/.config/hypr/lock-wall.conf
+home/.config/hypr/bettercachy.lua
+home/.config/gtk-3.0/gtk.css
+home/.config/gtk-4.0/gtk.css
+home/.config/qt5ct/colors/
+home/.config/qt6ct/colors/
+home/.config/Kvantum/Matugen/
+home/.config/sddm-matugen/background
+home/.config/sddm-matugen/Colors.qml
+
+# Personal state and editor/backup leftovers.
+home/.config/quickshell/database.json
+home/.config/bettercachy/
+*.bak

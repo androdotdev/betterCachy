@@ -1,121 +1,470 @@
-# Architecture
+# Architecture — a deep dive
 
-How the pieces fit together, what is tracked, and what is generated at runtime.
+This document explains how betterCachy is put together: what starts what, which file
+owns which value, where generated data comes from, and how the repo stays in sync
+with the live machine. For the component list and credits, see
+[`README.md`](README.md).
 
-## Big picture
+---
 
-```text
-                    ┌──────────────────────────────┐
-                    │            SDDM              │
-                    │  theme: matugen (Qt/QML)     │
-                    │  palette: Colors.qml         │
-                    │  wallpaper: background file  │
-                    └──────────────┬───────────────┘
-                                   │ login
-                                   ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ Hyprland (Wayland compositor)                                    │
-│  ~/.config/hypr/hyprland.lua ──require──▶ hyprland-settings.lua │
-│  autostart: hyprpaper, kando, kdeconnectd                        │
-│                                                                  │
-│  hyprpaper ──▶ desktop wallpaper                                 │
-│  hyprlock  ◀── colors.conf + lock-wall.conf                      │
-│  hypridle  ──▶ lock on idle / sleep                              │
-│                                                                  │
-│  systemd --user: quickshell.service, vicinae.service,            │
-│                  swayosd.service                                 │
-│                                                                  │
-│  quickshell ──▶ bar + OSD (reads colors.json)                    │
-└──────────────────────────────────────────────────────────────────┘
-                                   ▲
-                                   │ theme-apply <wallpaper>
-                    ┌──────────────┴───────────────┐
-                    │           Matugen            │
-                    │  config.toml + templates/*   │
-                    │  → GTK, Qt, Hypr, Quickshell,│
-                    │    SDDM palettes             │
-                    └──────────────────────────────┘
+## 1. Design rules
+
+1. **Hand-written files are tracked; generated files are not.** The repo stores what
+   a human edits. Anything a script can rebuild from the wallpaper is excluded.
+2. **The wallpaper is the single source of colour.** One command regenerates every
+   palette: Quickshell, Hyprland, GTK, Qt, Kvantum and SDDM.
+3. **No config is rewritten in place.** `theme-apply` overwrites only generated
+   files. `bettercachy-ctl` writes its own `bettercachy.lua` and appends one
+   `require()` line to `hyprland.lua` (with a `.bak`).
+4. **The shell is one QML process.** Quickshell owns the bar, notifications,
+   quick settings, the music UI and the OSD; it is a systemd user service, not an
+   autostart script.
+5. **The control center is optional.** Every GUI action has a CLI equivalent, and
+   the desktop keeps working when the app is not running.
+
+---
+
+## 2. Session boot chain
+
+```
+SDDM (theme "matugen")
+  └─ user login
+      └─ UWSM starts the Hyprland session
+          ├─ Hyprland reads hyprland.lua
+          │    ├─ autostart: hyprpaper, kando, kdeconnectd
+          │    └─ keybinds / window rules / animations
+          └─ systemd --user (graphical-session.target)
+               ├─ hypridle.service          idle → lock / DPMS
+               ├─ hyprpaper.service         wallpaper daemon
+               ├─ hyprpolkitagent.service   polkit prompts
+               ├─ quickshell.service        bar + OSD + notifications
+               ├─ vicinae.service           launcher server
+               └─ (swayosd.service)         optional OSD, package not installed
 ```
 
-## Repository layout
+Units live in `home/.config/systemd/user/`. The `.wants/` symlinks that enable them
+are *not* tracked; re-create them on a new machine with `systemctl --user enable`.
 
-```text
-betterCachy/
-├── README.md                          setup / restore instructions
-├── ARCHITECTURE.md                    this file
-├── install.sh                         restores home/ into $HOME (with backup)
-├── .gitignore                         runtime + generated state exclusions
-├── home/                              mirrors $HOME (dotfiles + key configs)
-│   ├── .bashrc .bash_profile .bash_logout
-│   ├── .zshrc .p10k.zsh          zsh + powerlevel10k
-│   ├── .gitconfig .gtkrc-2.0
-│   ├── .local/bin/
-│   │   ├── theme-apply        main theming entry point (fish)
-│   │   └── kvantum-apply      rebuilds the Kvantum theme (fish)
-│   ├── .config/
-│   │   ├── hypr/              Hyprland, hyprpaper, hyprlock, hypridle
-│   │   ├── matugen/           Matugen config + templates
-│   │   ├── sddm-matugen/      SDDM theme source + install.sh
-│   │   ├── quickshell/        Wayland bar + OSD shell
-│   │   ├── systemd/user/      user services
-│   │   ├── uwsm/env           uwsm session environment
-│   │   ├── Kvantum/           Kvantum theme
-│   │   ├── gtk-3.0/ gtk-4.0/  GTK themes
-│   │   ├── qt5ct/ qt6ct/      Qt colour schemes
-│   │   ├── kitty/ kando/ nwg-look/ noctalia/   launchers + terminal
-│   │   └── (no orbitals, no X11 legacy)         cleaned out
-│   ├── (no editors, no terminals, no btop/cava, no opencode/mise)
-│   └── (no KDE, no i3/polybar/picom/swash)
-├── system/                            reference snapshot of root-owned files
-│   └── etc/sddm.conf.d/zz-matugen-theme.conf
-│       + usr/share/sddm/themes/matugen/   (Main.qml, widgets, theme.conf, Colors.qml)
-├── packages/
-│   ├── pacman-explicit.txt    official repo packages (pacman -Qqe)
-│   ├── pacman-foreign.txt     AUR/foreign packages (pacman -Qqm)
-│   └── flatpak.txt            Flatpak app IDs
-└── demo.png                           screenshot of the desktop
+Hyprland's own autostart block in `hyprland.lua`:
+
+```lua
+hl.on("hyprland.start", function()
+    hl.exec_cmd("hyprpaper")
+    hl.exec_cmd("kando")
+    hl.exec_cmd("/usr/bin/kdeconnectd")
+end)
 ```
 
-## Flow
+`hyprpaper` is therefore both autostarted and enabled as a unit. That is harmless
+(the daemon is single-instance) but worth knowing when debugging wallpaper startup.
 
-1. **`install.sh`** clones/restores `home/` into `$HOME` with backup; `system/` is a
-   reference only. `--system` additionally runs the SDDM install script with `sudo`.
-2. **`theme-apply <wallpaper>`** (fish, in `home/.local/bin/`) calls Matugen via the
-   templates, then:
-   - copies the wallpaper to `~/.config/sddm-matugen/background` (the fixed path the
-     SDDM greeter reads),
-   - rewrites `~/.config/hypr/hyprpaper.conf` + restarts `hyprpaper`,
-   - with `-l`, rewrites `lock-wall.conf` for hyprlock,
-   - sets `adw-gtk3-dark` + dark colour-scheme via `gsettings`.
-3. **`kvantum-apply`** (fish) rebuilds the Kvantum theme from the Matugen palette.
-4. **SDDM** (`sudo ~/.config/sddm-matugen/install.sh`) installs to `/usr/share/sddm/themes/`
-   and grants the `sddm` greeter ACL read access.
+---
 
-Because everything colour-related is generated from Matugen + a single wallpaper, changing
-the palette later is a single command — no manual edits to GTK, Qt, Hypr, Quickshell or SDDM
-configs.
+## 3. Hyprland config layering
 
-## Generated vs. tracked files
+Hyprland reads one file, `~/.config/hypr/hyprland.lua`. Everything else is pulled in
+with `require()`.
 
-Generated at theme time (safe to delete; run `theme-apply` to recreate):
+```
+hyprland.lua
+  ├─ base settings, monitors, binds, window/layer rules
+  ├─ animation curves and springs
+  └─ at the end:
+       require("hyprland-settings")   ← written by the Hyprland Settings panel
+       require("bettercachy")         ← appended by bettercachy-ctl, wins last
+```
 
-- `~/.config/quickshell/colors.json`
-- `~/.config/hypr/colors.conf`
-- `~/.config/gtk-{3,4}.0/gtk.css`
-- `~/.config/qt{5,6}ct/colors/matugen.conf`
-- `~/.config/Kvantum/Matugen/*`
-- `~/.config/sddm-matugen/Colors.qml`
-- `~/.config/sddm-matugen/background`
-- `~/.config/hypr/hyprpaper.conf`, `lock-wall.conf`
+Consequences:
 
-Tracked here as snapshots of the current machine; treat them as outputs, not sources. The
-sources are the templates in `~/.config/matugen/templates/`, the theme QML in
-`~/.config/sddm-matugen/theme/`, and the scripts in `~/.local/bin/`.
+- `hyprland-settings.lua` is **generated by another tool** (Hyprland Settings panel).
+  Re-applying settings there overwrites the file. The revision string at the top is
+  the panel's marker.
+- `bettercachy.lua` is **generated by `bettercachy-ctl`**. It only contains the
+  values the Appearance page owns: rounding, gaps, border size and blur.
+- Because `require("bettercachy")` is appended after `require("hyprland-settings")`,
+  the control center's values win if both tools manage the same key.
+- `appearance.read_hypr()` does not execute Lua. It regex-scans the three files in
+  order (`hyprland.lua` → `hyprland-settings.lua` → `bettercachy.lua`) so the GUI
+  shows the effective values. Keep the `key = value` formatting if you edit by hand.
+- `appearance.write_hypr()` rewrites `bettercachy.lua`, calls `hyprctl reload`, and
+  returns an error string if the reload fails. Nothing else in `hypr/` is touched.
 
-## Restore flow
+Lock screen and wallpaper are separate consumers:
 
-`./install.sh` runs `rsync -a --backup --backup-dir=~/.betterCachy-backup/<ts>` from
-`home/` into `$HOME`, so the repo's tree maps 1:1 onto real paths. Nothing outside
-`home/` is touched; `system/` is only a reference. `--system` additionally runs the SDDM
-`install.sh` with `sudo`. After restoring, run `theme-apply` to regenerate every palette
-and then enable the user services (see README).
+```
+hyprlock.conf
+  ├─ source = ~/.config/hypr/colors.conf      ← Matugen
+  └─ source = ~/.config/hypr/lock-wall.conf   ← theme-apply -l
+```
+
+Idle behaviour (`hypridle.conf`): lock at **300 s**, DPMS off at **330 s**, DPMS on
+after resume, lock before sleep.
+
+---
+
+## 4. Theme pipeline
+
+`~/.local/bin/theme-apply <wallpaper> [-l]` is the entry point. It is a **fish**
+script because the rest of the desktop's helpers are fish.
+
+```
+theme-apply
+  ├─ matugen image <wallpaper> --source-color-index 0 -m dark
+  │    └─ reads ~/.config/matugen/config.toml
+  │         ├─ templates/gtk.css        → gtk-3.0/gtk.css, gtk-4.0/gtk.css
+  │         ├─ templates/qtct.conf      → qt5ct|qt6ct/colors/matugen.conf
+  │         ├─ templates/hypr-colors.conf → hypr/colors.conf
+  │         ├─ templates/Colors.json     → quickshell/colors.json
+  │         └─ templates/SddmColors.qml  → sddm-matugen/Colors.qml
+  ├─ kvantum-apply
+  │    ├─ copies KvFlat → ~/.config/Kvantum/Matugen/{Matugen.kvconfig,Matugen.svg}
+  │    ├─ sed-replaces colours from quickshell/colors.json
+  │    └─ kvantummanager --set Matugen
+  ├─ copies wallpaper → ~/.config/sddm-matugen/background (+ ACL for the sddm user)
+  ├─ writes ~/.config/hypr/hyprpaper.conf
+  ├─ restarts hyprpaper
+  ├─ with -l: writes ~/.config/hypr/lock-wall.conf
+  └─ gsettings: adw-gtk3-dark + prefer-dark
+```
+
+Notes:
+
+- `matugen/config.toml` is the source of truth for outputs. `templates/hyprland.conf`
+  exists but is **not wired** in `config.toml`; it is kept as a spare.
+- `quickshell/colors.json` is the hub. `kvantum-apply` and `bettercachy-ctl` both
+  read it; `Colors.qml` watches it and updates the whole shell live.
+- The SDDM greeter cannot read `$HOME` normally. `theme-apply` grants the `sddm`
+  user an ACL on the background, and `sddm-matugen/install.sh` grants read access to
+  the generated palette. This is the only place the desktop relaxes permissions.
+- GTK and Qt get two layers: the generated palette (`gtk.css`, `matugen.conf`) plus
+  the static toolkit settings (`settings.ini`, `qt5ct.conf`, `qt6ct.conf`).
+- Kvantum's `kvantum.kvconfig` selects `Matugen`; the theme itself is disposable and
+  regenerated on every wallpaper change.
+
+### Generated-file map
+
+| Generated file | Producer | Consumer |
+|---|---|---|
+| `~/.config/quickshell/colors.json` | Matugen `Colors.json` | `Colors.qml`, `kvantum-apply`, `bettercachy-ctl` |
+| `~/.config/hypr/colors.conf` | Matugen `hypr-colors.conf` | `hyprlock.conf` |
+| `~/.config/gtk-3.0/gtk.css` | Matugen `gtk.css` | GTK3 apps |
+| `~/.config/gtk-4.0/gtk.css` | Matugen `gtk.css` | GTK4/libadwaita apps |
+| `~/.config/qt5ct/colors/matugen.conf` | Matugen `qtct.conf` | Qt5 apps |
+| `~/.config/qt6ct/colors/matugen.conf` | Matugen `qtct.conf` | Qt6 apps |
+| `~/.config/Kvantum/Matugen/*` | `kvantum-apply` | Kvantum Qt style |
+| `~/.config/sddm-matugen/Colors.qml` | Matugen `SddmColors.qml` | SDDM theme |
+| `~/.config/sddm-matugen/background` | `theme-apply` | SDDM theme |
+| `~/.config/hypr/hyprpaper.conf` | `theme-apply` | `hyprpaper` |
+| `~/.config/hypr/lock-wall.conf` | `theme-apply -l` | `hyprlock` |
+| `~/.config/hypr/bettercachy.lua` | `bettercachy-ctl` | Hyprland (via require) |
+| `~/.config/bettercachy/settings.json` | `bettercachy-ctl` | control center |
+
+---
+
+## 5. Quickshell shell
+
+`~/.config/quickshell/shell.qml` is the root. It is intentionally tiny:
+
+```qml
+Scope {
+    BarComponents.Bar {}
+    OSD {}
+}
+```
+
+`bar/` and `osd/` are QML modules registered through `bar/qmldir`. `Colors.qml` is a
+singleton (`pragma Singleton`) that adapts `colors.json`; every component imports it
+through `import qs` + `Colors.<token>`.
+
+### Bar
+
+`bar/Bar.qml` renders one `PanelWindow` per screen (`Variants` over
+`Quickshell.screens`). The visual concept is a **notch**:
+
+- collapsed: a 340 px capsule with clock, tray and indicators;
+- hovered / popup open / player open: expands up to 1180 px and reveals controls;
+- `BarDatabase.notchAutoHide` hides the collapsed notch after a short delay;
+- `BarDatabase.reserveSpace` switches the Wayland `exclusionMode` so windows avoid
+  the bar instead of drawing under it.
+
+State and features in the bar:
+
+| Area | Implementation |
+|---|---|
+| Workspaces | `Hyprland.workspaces` → numeric slots + named workspaces |
+| System tray | `Quickshell.Services.SystemTray` + native menus |
+| Notifications | `NotificationServer`; toasts, history and DND mode |
+| Quick settings | `bar/QuickSettings.qml` — Wi-Fi/NetworkManager, Bluetooth, PipeWire sinks, profiles |
+| Calendar | `bar/CalendarPopup.qml` |
+| Battery | UPower laptop battery, if present |
+| Music capsule | cava visualizer + `MusicPlayer`/`MiniPlayer` |
+| Power menu | lock / suspend / reboot / poweroff via `loginctl`/`systemctl` |
+
+`BarDatabase.qml` is the only persistent bar store. It is a `FileView` +
+`JsonAdapter` over `~/.config/quickshell/database.json`, versioned (`version = 2`)
+with a one-time upgrade path. It persists:
+
+- `doNotDisturb`
+- `notifications` (capped at 30 entries)
+- `notchHoverExpand`, `notchAutoHide`, `reserveSpace`
+
+The database is deliberately **not tracked**: it contains notification bodies.
+
+### Music player
+
+`bar/MusicPlayer.qml` is the largest component. Its data flow has four independent
+processes:
+
+```
+YouTube Music InnerTube  ── ytmusic-api.py ──┐
+  (search, home, library, queue)             │  JSON via stdout
+                                             ▼
+mpv  ── JSON IPC over $XDG_RUNTIME_DIR/quickshell-ytmusic-<shellId>.sock ──► player UI
+  └─ yt-dlp resolves the stream, cookie file passed as --ytdl-raw-options
+
+cava ── raw ASCII frames ──► 14 bars in the capsule (only while playing)
+
+lrclib.net ── ytmusic-lyrics.sh ──► synced lyrics
+Google Translate ── ytmusic-translate.py ──► romanise / English
+```
+
+Key details:
+
+- **Cookies** are exported by `yt-dlp --cookies-from-browser <browser>` into
+  `Quickshell.cachePath("ytmusic/<browser>-cookies.txt")`. Sign in to
+  music.youtube.com in that browser first. The browser is a preference in
+  `ytmusic-preferences.json`.
+- **Per-instance socket** in `$XDG_RUNTIME_DIR` avoids stale sockets after a crash
+  while still being reused across config reloads.
+- **mpv log** is written next to the socket (`<socket>.log`) when playback fails.
+- **State files** under `Quickshell.statePath()`:
+  `ytmusic-preferences.json`, `ytmusic-library-<browser>.json`,
+  `ytmusic-home-<browser>.json`, `ytmusic-session.json`.
+- **cava config** lives in `bar/cava.conf` (not `~/.config/cava`) because it is
+  packaged with the shell and passed with `Quickshell.shellPath`.
+- The player degrades gracefully: no cava → no bars; no mpv → no playback; no
+  network → search/lyrics fail without crashing the bar.
+
+### OSD
+
+`osd/OSD.qml` is a separate `Scope` in the same process. It listens to PipeWire
+volume/mute changes and brightness events, draws a small overlay via
+`DefaultTheme.qml`, and auto-hides on timers. It does not own the media keys; those
+live in `hyprland.lua` (`wpctl`, `brightnessctl`, `playerctl`).
+
+---
+
+## 6. SDDM theme
+
+The greeter is a self-contained Qt 6 QML theme in `home/.config/sddm-matugen/`:
+
+```
+theme/
+  ├─ Main.qml           layout: background, clock, form
+  ├─ InputField.qml
+  ├─ ActionButton.qml
+  ├─ LinkButton.qml
+  ├─ theme.conf         background=@@HOME@@/.config/sddm-matugen/background
+  └─ metadata.desktop
+install.sh              copies theme → /usr/share/sddm/themes/matugen
+```
+
+`install.sh`:
+
+1. copies the theme to `/usr/share/sddm/themes/matugen`;
+2. writes `/etc/sddm.conf.d/zz-matugen-theme.conf` with `[Theme] Current=matugen`
+   (the `zz-` prefix wins over `kde_settings.conf`);
+3. grants the `sddm` user `--x` on `$HOME` and `rx` on `~/.config/sddm-matugen`
+   via ACL, then verifies with `runuser`;
+4. seeds `background` from the current `hyprpaper.conf` if it is missing.
+
+It expects `SDSM_HOME` to point at the user's home:
+
+```bash
+SDSM_HOME="$HOME" bash ~/.config/sddm-matugen/install.sh
+```
+
+Re-run it after changing the theme QML. The palette and background are read live
+from `~/.config/sddm-matugen/` (ACL permitting), so normal wallpaper changes do not
+need a reinstall.
+
+---
+
+## 7. Control center (`app/`)
+
+A PySide6 application with a QML frontend and a pure-Python backend. No Qt code is
+required for the CLI subcommands.
+
+```
+bettercachy-ctl
+  └─ app/bettercachy/main.py
+       ├─ gui()                QGuiApplication + QQmlApplicationEngine
+       │    ├─ Backend          QObject bridge (Properties + Slots)
+       │    └─ qml/Main.qml     5 pages, imported from qml/pages/
+       ├─ cli_doctor()         doctor.run_checks()
+       ├─ theme                appearance.apply_wallpaper()
+       └─ hypr                 appearance.read_hypr()
+```
+
+### Modules
+
+| Module | Responsibility |
+|---|---|
+| `paths.py` | `HOME`, `~/.config`, app dir, state dir, settings path, repo discovery, `BETTERCACHY_*` env |
+| `settings.py` | load/save `~/.config/bettercachy/settings.json`; wallpaper dir + repo fallbacks |
+| `shell.py` | `have()` and `run()` — subprocess wrapper that never raises |
+| `appearance.py` | palette read, wallpaper scan/apply, Hyprland values read/write, include management |
+| `doctor.py` | grouped health checks: tools, session services, generated files, config, repo/packages |
+| `services.py` | list/start/stop/enable/reload user units and read journal logs |
+| `packages.py` | compare installed pacman/AUR/Flatpak packages with `packages/*.txt`; write lists |
+| `gitsync.py` | drift between live `~/.config` and repo `home/`; copy, commit, push |
+| `backend.py` | QObject bridge; turns blocking work into daemon threads and signals |
+
+### Data flow
+
+```
+QML control  ──Slot──►  Backend  ──thread──►  module  ──subprocess──►  system
+    ▲                      │
+    └──Property notify─────┘  changed(name) / _task_done(label, result)
+```
+
+Blocking operations (wallpaper apply, doctor, package scan, git) never run on the Qt
+thread. `_finish()` converts exceptions into a toast instead of crashing the window.
+`main.gui()` tears down the QML objects before the backend so bindings cannot read a
+dead QObject.
+
+### Settings and overrides
+
+`~/.config/bettercachy/settings.json`:
+
+```json
+{
+  "wallpaper_dir": "/home/rishabh/Pictures",
+  "last_wallpaper": "/home/rishabh/Pictures/wallpaper.jpg",
+  "lock": true,
+  "repo": "/home/rishabh/Projects/betterCachy-v2"
+}
+```
+
+- `BETTERCACHY_REPO` overrides the repo path.
+- `BETTERCACHY_HOME` overrides `$HOME`.
+- `BETTERCACHY_DEMO=1` makes the GUI use canned check/package/drift data for UI work.
+
+### Doctor groups
+
+| Group | Checks |
+|---|---|
+| Tools | Hyprland, hyprctl, Quickshell, Matugen, fish, hyprpaper required; mpv, yt-dlp, JS runtime, cava, curl, rsync optional |
+| Session | Hyprland running; managed user services active |
+| Generated files | `quickshell/colors.json`, `hypr/colors.conf`, `hypr/hyprpaper.conf`, `quickshell/Colors.qml` |
+| Config | `hyprland.lua` contains `require("bettercachy")` |
+| Repo | config drift + package-list drift |
+
+Fixes are expressed as IDs (`theme`, `hypr-include`, `svc:<verb>:<unit>`) so the same
+logic is reusable from the CLI and the QML page.
+
+---
+
+## 8. Repo sync model
+
+`gitsync.py` walks a fixed allow-list, not all of `~/.config`:
+
+```python
+WATCH_DIRS = [
+    ".config/quickshell", ".config/hypr", ".config/matugen",
+    ".config/systemd/user", ".config/kitty", ".config/sddm-matugen",
+    ".config/uwsm", ".config/gtk-3.0", ".config/gtk-4.0",
+    ".config/qt5ct", ".config/qt6ct", ".config/Kvantum",
+    ".config/autostart", ".local/bin",
+]
+```
+
+For each live file it reports one of:
+
+- `new` — exists live, missing from the repo;
+- `changed` — both exist, bytes differ;
+- `missing` — exists in the repo, gone live.
+
+`saves_to_repo()` copies the selected live files into `home/` byte-for-byte, keeping
+the mode. `commit()` runs `git add -A` + `git commit`; `push()` runs `git push`.
+
+Ignored by design:
+
+- generated palettes and css (`colors.json`, `colors.conf`, `gtk.css`,
+  `noctalia*.css`, `matugen.conf`),
+- wallpaper state (`hyprpaper.conf`, `lock-wall.conf`, `background`),
+- app/private state (`database.json`),
+- `__pycache__`, caches, logs, `*.bak`, `.AppImage`, symlinks,
+- the unusable Kvantum themes and the generated Kvantum `Matugen` theme.
+
+This keeps the Sync page quiet: a healthy machine shows **zero** rows. If it shows
+something, it is either a real edit or a file that should be added to the ignore
+lists.
+
+---
+
+## 9. Tracked vs generated vs runtime
+
+| Kind | Examples | In repo? |
+|---|---|---|
+| Hand-written config | `hyprland.lua`, `hyprlock.conf`, `bar/*.qml`, `matugen/templates/*` | yes |
+| Static toolkit settings | `gtk-*/settings.ini`, `qt5ct.conf`, `qt6ct.conf`, `Kvantum/kvantum.kvconfig` | yes |
+| Helper scripts | `theme-apply`, `kvantum-apply`, `ytmusic-*.py/sh` | yes |
+| Units | `quickshell.service`, `vicinae.service`, `swayosd.service` | yes |
+| Generated palettes | `colors.json`, `colors.conf`, `gtk.css`, `matugen.conf`, `Kvantum/Matugen/` | no |
+| Per-wallpaper state | `hyprpaper.conf`, `lock-wall.conf`, `sddm-matugen/background` | no |
+| User state | `quickshell/database.json`, `bettercachy/settings.json`, ytmusic state/cookies | no |
+| Downloads | AppImages, `~/.local/bin` symlinks | no |
+
+---
+
+## 10. Failure modes and where to look
+
+| Symptom | First things to check |
+|---|---|
+| Bar missing / blank | `systemctl --user status quickshell`, `journalctl --user -u quickshell -b`; confirm `Colors.qml` and `blocking` QML files are intact |
+| Bar has default purple palette | `~/.config/quickshell/colors.json` missing → run `theme-apply` |
+| Hyprland ignores app settings | `require("bettercachy")` missing from the end of `hyprland.lua`; `bettercachy-ctl doctor` reports this |
+| Lock screen has no wallpaper | `hypr/lock-wall.conf` missing (run `theme-apply -l`), or `hyprlock.conf` cannot source `colors.conf` |
+| SDDM falls back to default theme | `/etc/sddm.conf.d/zz-matugen-theme.conf`, `journalctl -u sddm`; re-run `install.sh` and check the ACLs |
+| GTK/Qt apps ignore the palette | generated `gtk.css` / `matugen.conf` missing; check `matugen/config.toml` output paths |
+| Music will not play | `yt-dlp -U`, browser sign-in, `mpv` present; read `<socket>.log` in `$XDG_RUNTIME_DIR`; `curl` for the API |
+| Lyrics empty | lrclib may have no match; `ytmusic-lyrics.sh "<title>" "<artist>" <seconds>` manually |
+| No cava bars | `cava` installed, PipeWire/Pulse running, `bar/cava.conf` readable |
+| Control center shows demo data | `BETTERCACHY_DEMO=1` is exported |
+| Sync page noisy | a generated file escaped the ignore lists; extend `IGNORE_*` in `gitsync.py` |
+
+Useful commands:
+
+```bash
+hyprctl reload && hyprctl configerrors
+journalctl --user -u quickshell -f
+./app/bettercachy-ctl doctor
+./app/bettercachy-ctl hypr
+systemctl --user list-units 'quickshell*' 'vicinae*' 'hypr*'
+```
+
+---
+
+## 11. Extending it
+
+**New colour target.** Add a template under `matugen/templates/`, register it in
+`matugen/config.toml`, run `theme-apply`, and add the output to the ignore lists so
+it never lands in the repo.
+
+**New user service.** Drop a `.service` in `home/.config/systemd/user/`, enable it
+with `systemctl --user enable --now`, and it automatically appears on the Services
+page (`services.managed_units()` reads the repo unit directory).
+
+**New bar widget.** Put a component in `bar/`, register it in `bar/qmldir` if it is
+its own file, then instantiate it in `Bar.qml`. Reuse `Colors.*` instead of literal
+colours. Re-run `quickshell` (or let the service restart) to reload.
+
+**New control-center page.** Add `qml/pages/FooPage.qml`, add an entry to the
+`pages` array in `qml/Main.qml`, expose the data as a `Property` on `Backend`, and
+add a `@Slot` for actions. Keep slow calls inside `_async()`.
+
+**Another machine.** Restore `home/` with `rsync`, enable the units, install the
+SDDM theme, then run `theme-apply` once. The tracked files contain no
+machine-specific absolute paths; the only placeholder is `@@HOME@@` in the SDDM
+`theme.conf`, which `install.sh` resolves at install time.

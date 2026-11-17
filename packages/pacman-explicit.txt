@@ -21,7 +21,6 @@ brightnessctl
 btop
 btrfs-assistant
 btrfs-progs
-cachy-update
 cachyos-drm-awaiter
 cachyos-fish-config
 cachyos-hello
@@ -69,14 +68,13 @@ firefox
 flatpak
 fsarchiver
 fuse2
+fuzzel
 geoclue
 git
 github-cli
 glances
 gnome-keyring
 gpu-screen-recorder
-grim
-grimblast-git
 gst-libav
 gst-plugin-pipewire
 gst-plugin-va
@@ -93,9 +91,9 @@ hyprland
 hyprlauncher
 hyprlock
 hyprpaper
-hyprpicker
 hyprpolkitagent
 hyprpwcenter
+hyprshot
 inetutils
 iwd
 jfsutils
@@ -168,6 +166,7 @@ poppler-glib
 power-profiles-daemon
 profile-sync-daemon
 pv
+pyside6
 python
 python-defusedxml
 python-openrazer
@@ -185,7 +184,6 @@ sddm
 seahorse
 sg3_utils
 shelly
-slurp
 smartmontools
 snapper
 sof-firmware
@@ -194,6 +192,7 @@ sudo
 swash
 sysfsutils
 texinfo
+tlp
 ttf-bitstream-vera
 ttf-dejavu
 ttf-jetbrains-mono-nerd

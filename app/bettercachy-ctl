@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Launcher. Uses uv (PySide6 lives in app/.venv) and falls back to system python3.
+dir="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
+export PYTHONPATH="$dir${PYTHONPATH:+:$PYTHONPATH}"
+if [[ "${1:-}" == "doctor" || "${1:-}" == "hypr" ]] && command -v python3 >/dev/null 2>&1; then
+    # CLI commands need no Qt, so skip the venv and start instantly
+    exec python3 -m bettercachy.main "$@"
+fi
+if command -v uv >/dev/null 2>&1; then
+    exec uv run --quiet --project "$dir" python -m bettercachy.main "$@"
+fi
+exec python3 -m bettercachy.main "$@"

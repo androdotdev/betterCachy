@@ -11,3 +11,5 @@ BlurBackdrop 1.0 BlurBackdrop.qml
 LoadingSpinner 1.0 LoadingSpinner.qml
 ThemedSlider 1.0 ThemedSlider.qml
 IconButton 1.0 IconButton.qml
+CalendarPopup 1.0 CalendarPopup.qml
+singleton BarDatabase 1.0 BarDatabase.qml
