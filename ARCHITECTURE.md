@@ -342,7 +342,7 @@ dead QObject.
   "wallpaper_dir": "/home/rishabh/Pictures",
   "last_wallpaper": "/home/rishabh/Pictures/wallpaper.jpg",
   "lock": true,
-  "repo": "/home/rishabh/Projects/betterCachy-v2"
+  "repo": "/home/rishabh/Projects/betterCachy"
 }
 ```
 

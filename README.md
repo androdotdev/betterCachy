@@ -165,7 +165,7 @@ above remains the property of its upstream authors and keeps its upstream licenc
 ## Repository layout
 
 ```
-betterCachy-v2/
+betterCachy/
 ├── README.md                      this file (overview + credits)
 ├── ARCHITECTURE.md                how the pieces fit together
 ├── install.sh                     restore home/ into $HOME (dry-run + backup)
