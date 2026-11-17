@@ -155,6 +155,29 @@ Scope {
         onFinished: root.notificationToasts = []
     }
 
+    function hyprMoveActiveToWorkspace(id): void {
+        if (Hyprland.usingLua) Hyprland.dispatch("hl.dsp.window.move({ workspace = " + id + " })")
+        else Hyprland.dispatch("movetoworkspace " + id)
+    }
+
+    function hyprFocusRelative(step: string): void {
+        if (Hyprland.usingLua) Hyprland.dispatch("hl.dsp.focus({ workspace = \"" + step + "\" })")
+        else Hyprland.dispatch("workspace " + step)
+    }
+
+    function hyprFocusWorkspace(id): void {
+        if (Hyprland.usingLua) Hyprland.dispatch("hl.dsp.focus({ workspace = " + id + " })")
+        else Hyprland.dispatch("workspace " + id)
+    }
+
+    function windowsOnWorkspace(id): var {
+        const out = []
+        for (const t of (Hyprland.toplevels.values || [])) {
+            if (t.workspace && t.workspace.id === id) out.push(t)
+        }
+        return out
+    }
+
     Variants {
         model: Quickshell.screens
 
@@ -203,6 +226,17 @@ Scope {
                         enabled: root.notchExpanded
                         Behavior on opacity { NumberAnimation { duration: 140 } }
 
+                        MiniMenu {
+                            id: wsMenu
+                            property int targetId: 1
+                            onDismissed: open = false
+                            onPicked: function(id) {
+                                open = false
+                                if (id === "go") root.hyprFocusWorkspace(targetId)
+                                else if (id === "move") root.hyprMoveActiveToWorkspace(targetId)
+                            }
+                        }
+
                         Repeater {
                             model: root.workspaceEntries
                             delegate: Rectangle {
@@ -225,11 +259,41 @@ Scope {
                                     font.pixelSize: 11
                                     font.bold: parent.focused
                                 }
+                                Row {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: 2
+                                    spacing: 2
+                                    Repeater {
+                                        model: Math.min(3, root.windowsOnWorkspace(parent.parent.workspaceId).length)
+                                        delegate: Rectangle {
+                                            width: 3
+                                            height: 3
+                                            radius: 1.5
+                                            color: parent.parent.parent.focused ? Colors.fgPrimary : Colors.primary
+                                        }
+                                    }
+                                }
+                                WheelHandler {
+                                    onWheel: function(event) { root.hyprFocusRelative(event.angleDelta.y > 0 ? "e-1" : "e+1") }
+                                }
                                 MouseArea {
                                     anchors.fill: parent
                                     hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
+                                    onClicked: function(mouse) {
+                                        if (mouse.button === Qt.RightButton) {
+                                            wsMenu.targetId = parent.workspaceId
+                                            wsMenu.anchorItem = parent
+                                            wsMenu.items = [
+                                                { id: "title", text: "Workspace " + parent.workspaceId, header: true },
+                                                { id: "go", text: "Go here", glyph: "󰁔" },
+                                                { id: "move", text: "Move active window here", glyph: "󰁜" }
+                                            ]
+                                            wsMenu.open = true
+                                            return
+                                        }
                                         const target = parent.numericSlot ? parent.workspaceId : parent.workspace.name
                                         if (Hyprland.usingLua) {
                                             const value = typeof target === "number"
@@ -265,18 +329,18 @@ Scope {
                                         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        ToolTip.visible: containsMouse && (modelData.tooltipTitle || modelData.title)
+                                        ToolTip.visible: containsMouse && !trayPopup.open && (modelData.tooltipTitle || modelData.title)
                                         ToolTip.text: modelData.tooltipTitle || modelData.title || modelData.id
                                         ToolTip.delay: 500
                                         onClicked: function(mouse) {
                                             root.activePopup = ""
                                             if (mouse.button === Qt.LeftButton) {
-                                                if (modelData.onlyMenu && modelData.hasMenu) trayMenu.open()
+                                                if (modelData.onlyMenu && modelData.hasMenu) trayPopup.open = true
                                                 else modelData.activate()
                                             } else if (mouse.button === Qt.MiddleButton) {
                                                 modelData.secondaryActivate()
-                                            } else if (mouse.button === Qt.RightButton && modelData.hasMenu) {
-                                                trayMenu.open()
+                                            } else {
+                                                trayPopup.open = !trayPopup.open
                                             }
                                         }
                                         onWheel: function(wheel) {
@@ -287,13 +351,11 @@ Scope {
                                             source: trayDelegate.modelData.icon
                                             implicitSize: 18
                                         }
-                                        QsMenuAnchor {
-                                            id: trayMenu
-                                            menu: trayDelegate.modelData.menu
-                                            anchor.item: trayDelegate
-                                            anchor.edges: Edges.Bottom
-                                            anchor.gravity: Edges.Bottom
-                                            anchor.adjustment: PopupAdjustment.Flip | PopupAdjustment.Slide
+                                        TrayMenu {
+                                            id: trayPopup
+                                            trayItem: trayDelegate.modelData
+                                            anchorItem: trayDelegate
+                                            onDismissed: open = false
                                         }
                                     }
                                 }

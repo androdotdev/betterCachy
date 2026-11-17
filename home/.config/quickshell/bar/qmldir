@@ -13,3 +13,8 @@ ThemedSlider 1.0 ThemedSlider.qml
 IconButton 1.0 IconButton.qml
 CalendarPopup 1.0 CalendarPopup.qml
 singleton BarDatabase 1.0 BarDatabase.qml
+MiniMenu 1.0 MiniMenu.qml
+TrayMenu 1.0 TrayMenu.qml
+AppPicker 1.0 AppPicker.qml
+DockContent 1.0 DockContent.qml
+Dock 1.0 Dock.qml

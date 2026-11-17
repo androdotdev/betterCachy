@@ -4,6 +4,7 @@ import "osd"
 
 Scope {
     BarComponents.Bar {}
+    BarComponents.Dock {}
     OSD {}
 }
 
