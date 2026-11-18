@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Regenerate Vicinae's Matugen theme from the Quickshell palette.
+
+The palette is produced by matugen (see theme-apply) and shared with the bar.
+Run this after matugen whenever the wallpaper changes; theme-apply does that
+for you.
+"""
+
+import json
+import pathlib
+import subprocess
+
+THEME_ID = "matugen"
+COLORS = pathlib.Path.home() / ".config/quickshell/colors.json"
+THEME = pathlib.Path.home() / ".local/share/vicinae/themes" / f"{THEME_ID}.toml"
+
+TEMPLATE = """\
+# Generated from the Matugen palette. Do not edit by hand.
+[meta]
+name = "Matugen"
+description = "Matugen palette generated from the current wallpaper."
+variant = "dark"
+inherits = "vicinae-dark"
+
+[colors.core]
+accent = "@primary@"
+accent_foreground = "@fgPrimary@"
+background = "@surface@"
+foreground = "@fg@"
+secondary_background = "@surfaceContainer@"
+border = "@surfaceContainerHigh@"
+
+[colors.main_window]
+border = "@surfaceContainerHigh@"
+footer = { background = "colors.core.secondary_background" }
+
+[colors.settings_window]
+border = "@surfaceContainerHigh@"
+
+[colors.text]
+default = "colors.core.foreground"
+muted = "@fgDim@"
+danger = "@error@"
+placeholder = "@outline@"
+selection = { background = "@primary@", foreground = "@fgPrimary@" }
+
+[colors.text.links]
+default = "@primary@"
+visited = "@tertiary@"
+
+[colors.input]
+border = "@surfaceContainerHigh@"
+border_focus = "@primary@"
+border_error = "@error@"
+
+[colors.button.primary]
+background = "@surfaceContainerHigh@"
+foreground = "@fg@"
+focus = { outline = "colors.core.accent" }
+
+[colors.list.item.hover]
+foreground = "@fg@"
+secondary_foreground = "@fgDim@"
+
+[colors.list.item.selection]
+background = "@surfaceContainerHigh@"
+foreground = "@fg@"
+secondary_background = "@surfaceContainerHigh@"
+secondary_foreground = "@fgDim@"
+
+[colors.grid.item]
+background = "@surfaceContainer@"
+hover = { outline = "@fg@" }
+selection = { outline = "@primary@" }
+
+[colors.scrollbars]
+background = "@surfaceContainerHigh@"
+
+[colors.loading]
+bar = "@primary@"
+spinner = "@fg@"
+"""
+
+
+def main() -> None:
+    colors = json.loads(COLORS.read_text())
+    missing = [key for key in ("primary", "surface", "fg") if key not in colors]
+    if missing:
+        raise SystemExit(f"vicinae-theme: missing palette keys: {', '.join(missing)}")
+
+    theme = TEMPLATE
+    for key, value in colors.items():
+        theme = theme.replace(f"@{key}@", str(value))
+
+    THEME.parent.mkdir(parents=True, exist_ok=True)
+    THEME.write_text(theme)
+
+    # Apply it to the running shell now; ignore failure when Vicinae is down.
+    subprocess.run(["vicinae", "theme", "set", THEME_ID],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   check=False)
+
+
+if __name__ == "__main__":
+    main()

@@ -227,7 +227,8 @@ Do not edit `Colors.qml` values by hand; they come from the wallpaper:
 ~/.local/bin/theme-apply ~/Pictures/wallpaper.jpg -l
 ```
 
-That regenerates `~/.config/quickshell/colors.json`, which `Colors.qml` watches. Use
+That regenerates `~/.config/quickshell/colors.json`, which `Colors.qml` watches. The same
+command also refreshes the Kvantum and Vicinae themes from that palette. Use
 `Colors.primary`, `Colors.surfaceContainer`, `Colors.fg`, etc. in new QML instead of
 literal colours.
 

@@ -4,6 +4,7 @@ argparse l/lock -- $argv; or exit 1
 set wp (realpath $argv[1])
 matugen image $wp --source-color-index 0 -m dark
 kvantum-apply
+vicinae-theme
 
 # Keep the SDDM login wallpaper in sync. The theme reads this fixed path
 # (theme.conf: background=file://$HOME/.config/sddm-matugen/background),
