@@ -8,6 +8,7 @@ for you.
 
 import json
 import pathlib
+import re
 import subprocess
 
 THEME_ID = "matugen"
@@ -91,6 +92,10 @@ def main() -> None:
     theme = TEMPLATE
     for key, value in colors.items():
         theme = theme.replace(f"@{key}@", str(value))
+
+    leftover = sorted(set(re.findall(r"@[A-Za-z0-9_]+@", theme)))
+    if leftover:
+        raise SystemExit("vicinae-theme: palette is missing " + ", ".join(leftover))
 
     THEME.parent.mkdir(parents=True, exist_ok=True)
     THEME.write_text(theme)
