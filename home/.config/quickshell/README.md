@@ -139,6 +139,8 @@ systemctl --user start quickshell.service
   reserved strip around it. The sensor is `hoverSensor` in `bar/Bar.qml`.
 - While hidden, a small centered strip (`hiddenHoverHeight`) reveals it.
 - An open popup or the music player keeps the notch expanded.
+- Right-click menus from tray icons and workspaces are tracked too (`openContextMenus`),
+  so the notch does not collapse while an app menu is open.
 - After a popup closes, `popupCloseGrace` keeps it expanded long enough that clicking
   the music button a second time does not collapse and re-expand the bar.
 

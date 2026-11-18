@@ -23,11 +23,15 @@ Scope {
     property bool barHoverRaw: false
     property bool barHovered: false
     property bool popupGrace: false
+    // Right-click menus (tray, workspace) are separate popup windows, so the
+    // bar has to track them itself. Otherwise leaving the capsule for the menu
+    // counts as "unhovered" and the notch collapses behind the open menu.
+    property int openContextMenus: 0
     readonly property bool showBattery: Config.battery && batteryDevice !== null && batteryDevice.ready
     property bool notchShown: !BarDatabase.notchAutoHide || BarDatabase.reserveSpace
-    property bool notchExpanded: (Config.hoverExpand && barHovered) || activePopup !== "" || playerOpen || popupGrace
+    property bool notchExpanded: (Config.hoverExpand && barHovered) || activePopup !== "" || playerOpen || popupGrace || openContextMenus > 0
     readonly property bool notchAutoHide: BarDatabase.notchAutoHide && !BarDatabase.reserveSpace
-    readonly property bool notchKeepShown: !notchAutoHide || barHoverRaw || barHovered || activePopup !== "" || playerOpen || popupGrace
+    readonly property bool notchKeepShown: !notchAutoHide || barHoverRaw || barHovered || activePopup !== "" || playerOpen || popupGrace || openContextMenus > 0
 
     // Debounced hover: a short delay before expanding/revealing avoids flicker
     // when the pointer crosses the bar, and a longer delay before collapsing
@@ -250,7 +254,23 @@ Scope {
                         MiniMenu {
                             id: wsMenu
                             property int targetId: 1
+                            property bool countedOpen: false
                             onDismissed: open = false
+                            onOpenChanged: {
+                                if (open && !countedOpen) {
+                                    countedOpen = true
+                                    root.openContextMenus += 1
+                                } else if (!open && countedOpen) {
+                                    countedOpen = false
+                                    root.openContextMenus = Math.max(0, root.openContextMenus - 1)
+                                }
+                            }
+                            Component.onDestruction: {
+                                if (countedOpen) {
+                                    countedOpen = false
+                                    root.openContextMenus = Math.max(0, root.openContextMenus - 1)
+                                }
+                            }
                             onPicked: function(id) {
                                 open = false
                                 if (id === "go") root.hyprFocusWorkspace(targetId)
@@ -374,9 +394,25 @@ Scope {
                                         }
                                         TrayMenu {
                                             id: trayPopup
+                                            property bool countedOpen: false
                                             trayItem: trayDelegate.modelData
                                             anchorItem: trayDelegate
                                             onDismissed: open = false
+                                            onOpenChanged: {
+                                                if (open && !countedOpen) {
+                                                    countedOpen = true
+                                                    root.openContextMenus += 1
+                                                } else if (!open && countedOpen) {
+                                                    countedOpen = false
+                                                    root.openContextMenus = Math.max(0, root.openContextMenus - 1)
+                                                }
+                                            }
+                                            Component.onDestruction: {
+                                                if (countedOpen) {
+                                                    countedOpen = false
+                                                    root.openContextMenus = Math.max(0, root.openContextMenus - 1)
+                                                }
+                                            }
                                         }
                                     }
                                 }
