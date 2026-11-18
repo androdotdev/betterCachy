@@ -133,6 +133,33 @@ rm ~/.config/quickshell/database.json
 systemctl --user start quickshell.service
 ```
 
+### Scripting runtime toggles
+
+The file is plain JSON, so a script or keybind can flip a switch without opening Quick
+Settings. Stop the service first — otherwise the running shell writes its in-memory
+state back over your edit when it next saves.
+
+```bash
+systemctl --user stop quickshell.service
+python3 -c "import json,os;p=os.path.expanduser('~/.config/quickshell/database.json');d=json.load(open(p));d['dockEnabled']=False;json.dump(d,open(p,'w'),indent=2)"
+systemctl --user start quickshell.service
+```
+
+Keys you are likely to script:
+
+| Key | Type | Effect |
+|---|---|---|
+| `doNotDisturb` | bool | silence notification toasts |
+| `notchAutoHide` | bool | hide the notch until the top edge is hovered |
+| `reserveSpace` | bool | keep the top strip reserved and the notch always shown |
+| `dockEnabled` | bool | show the floating dock |
+| `dockAutoHide` | bool | hide the dock until the pointer reaches the bottom edge |
+| `dockIconSize` | int | dock icon size in pixels |
+| `dockPinned` | array | pinned app ids, in order |
+
+Leave the `version` key alone; it drives the one-time state upgrade in
+`bar/BarDatabase.qml`. Skip the stop/start pair only if Quickshell is not running.
+
 ## The notch and hover
 
 Two sensors in `bar/Bar.qml` split "show" from "expand":
