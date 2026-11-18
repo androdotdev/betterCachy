@@ -21,6 +21,7 @@ Scope {
     property var notificationHistory: BarDatabase.notifications
     property bool playerOpen: false
     property bool barHoverRaw: false
+    property bool barRevealRaw: false
     property bool barHovered: false
     property bool popupGrace: false
     // Right-click menus (tray, workspace) are separate popup windows, so the
@@ -31,7 +32,7 @@ Scope {
     property bool notchShown: !BarDatabase.notchAutoHide || BarDatabase.reserveSpace
     property bool notchExpanded: (Config.hoverExpand && barHovered) || activePopup !== "" || playerOpen || popupGrace || openContextMenus > 0
     readonly property bool notchAutoHide: BarDatabase.notchAutoHide && !BarDatabase.reserveSpace
-    readonly property bool notchKeepShown: !notchAutoHide || barHoverRaw || barHovered || activePopup !== "" || playerOpen || popupGrace || openContextMenus > 0
+    readonly property bool notchKeepShown: !notchAutoHide || barRevealRaw || barHoverRaw || barHovered || activePopup !== "" || playerOpen || popupGrace || openContextMenus > 0
 
     // Debounced hover: a short delay before expanding/revealing avoids flicker
     // when the pointer crosses the bar, and a longer delay before collapsing
@@ -676,8 +677,8 @@ Scope {
                     MusicPlayer {
                         id: ytMusicPlayer
                         anchorItem: ytmusicButton
-                        onOpenChanged: root.playerOpen = open
-                        Component.onCompleted: root.playerOpen = open
+                        onPopupVisibleChanged: root.playerOpen = popupVisible
+                        Component.onCompleted: root.playerOpen = popupVisible
                     }
 
                     CalendarPopup {
@@ -856,10 +857,23 @@ Scope {
                 }
             }
 
+            // Full-width reveal strip. With auto-hide on, hovering anywhere
+            // along the top edge brings the notch back collapsed. It does not
+            // expand anything; only the capsule sensor below does that.
+            Item {
+                id: revealSensor
+                z: 999
+                x: 0
+                y: 0
+                width: panel.width
+                height: root.notchShown ? Config.panelHeight : Config.hiddenHoverHeight
+                HoverHandler { onHoveredChanged: root.barRevealRaw = hovered }
+            }
+
             // Passive hover sensor. It covers only the capsule (or a small
             // centered strip while the notch is hidden) so hovering the empty
-            // reserved space does not expand the bar. HoverHandlers do not
-            // accept pointer events, so clicks still reach the widgets below.
+            // reserved space reveals the bar without expanding it. HoverHandlers
+            // do not accept pointer events, so clicks still reach the widgets.
             Item {
                 id: hoverSensor
                 z: 1000

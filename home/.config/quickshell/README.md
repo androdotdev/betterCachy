@@ -104,7 +104,7 @@ property bool hoverExpand: false
 ```
 
 Then disable auto-hide in **Quick Settings → Auto-hide**, otherwise the hidden notch
-can only be revealed by hovering its small center strip.
+can only be revealed by hovering the top edge (see below).
 
 **Slow down or speed up the animations**
 
@@ -135,12 +135,20 @@ systemctl --user start quickshell.service
 
 ## The notch and hover
 
-- The notch expands only while the pointer is over the **capsule**, not the empty
-  reserved strip around it. The sensor is `hoverSensor` in `bar/Bar.qml`.
-- While hidden, a small centered strip (`hiddenHoverHeight`) reveals it.
-- An open popup or the music player keeps the notch expanded.
-- Right-click menus from tray icons and workspaces are tracked too (`openContextMenus`),
-  so the notch does not collapse while an app menu is open.
+Two sensors in `bar/Bar.qml` split "show" from "expand":
+
+- `revealSensor` is a full-width strip along the top edge. With auto-hide on, hovering
+  anywhere along the top brings the notch back **collapsed**. It never expands it.
+- `hoverSensor` covers only the **capsule**, not the empty reserved strip around it.
+  That is what expands the notch, and only when `Config.hoverExpand` is on.
+- While fully hidden, the reveal strip is `Config.hiddenHoverHeight` tall.
+
+What keeps the notch open once it is expanded:
+
+- An open popup, or the music player while either of its popups is still visible
+  (including the fade-out) — `MusicPlayer.popupVisible`.
+- Right-click menus from tray icons and workspaces (`openContextMenus`), so the notch
+  does not collapse while an app menu is open.
 - After a popup closes, `popupCloseGrace` keeps it expanded long enough that clicking
   the music button a second time does not collapse and re-expand the bar.
 

@@ -9,6 +9,9 @@ Scope {
     id: root
 
     property bool open: false
+    // True while either player popup is visible, including its fade-out. The
+    // bar uses this so it does not collapse underneath the closing animation.
+    readonly property bool popupVisible: open || miniPlayer.visible || playerPopup.visible
     property string popupMode: "mini"
     property var anchorItem
     property var results: []
@@ -2101,6 +2104,7 @@ Scope {
     }
 
     MiniPlayer {
+        id: miniPlayer
         player: root
     }
 }
