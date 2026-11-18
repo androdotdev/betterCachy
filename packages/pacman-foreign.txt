@@ -1,3 +1,0 @@
-kando-bin
-kvantum-theme-catppuccin-git
-vicinae-bin

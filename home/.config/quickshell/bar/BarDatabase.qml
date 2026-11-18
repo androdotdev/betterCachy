@@ -14,7 +14,6 @@ Singleton {
     property bool ready: false
     property bool doNotDisturb: false
     property var notifications: []
-    property bool notchHoverExpand: true
     property bool notchAutoHide: true
     property bool reserveSpace: false
     property bool dockEnabled: true
@@ -49,7 +48,6 @@ Singleton {
         const upgradeDock = data.version < 3
         root.doNotDisturb = data.doNotDisturb === true
         root.notifications = data.notifications || []
-        root.notchHoverExpand = upgrade ? true : data.notchHoverExpand !== false
         root.notchAutoHide = upgrade ? true : data.notchAutoHide !== false
         root.reserveSpace = upgrade ? false : data.reserveSpace === true
         root.dockEnabled = upgradeDock ? true : data.dockEnabled !== false
@@ -67,7 +65,6 @@ Singleton {
         data.version = 3
         data.doNotDisturb = root.doNotDisturb
         data.notifications = root.notifications
-        data.notchHoverExpand = root.notchHoverExpand
         data.notchAutoHide = root.notchAutoHide
         data.reserveSpace = root.reserveSpace
         data.dockEnabled = root.dockEnabled
@@ -87,7 +84,6 @@ Singleton {
 
     onDoNotDisturbChanged: persist()
     onNotificationsChanged: persist()
-    onNotchHoverExpandChanged: persist()
     onNotchAutoHideChanged: persist()
     onReserveSpaceChanged: persist()
     onDockEnabledChanged: persist()
@@ -106,7 +102,6 @@ Singleton {
             property int version: 3
             property bool doNotDisturb: false
             property var notifications: []
-            property bool notchHoverExpand: true
             property bool notchAutoHide: true
             property bool reserveSpace: false
             property bool dockEnabled: true
@@ -125,7 +120,6 @@ Singleton {
             data.version = 3
             data.doNotDisturb = root.doNotDisturb
             data.notifications = root.notifications
-            data.notchHoverExpand = root.notchHoverExpand
             data.notchAutoHide = root.notchAutoHide
             data.reserveSpace = root.reserveSpace
             data.dockEnabled = root.dockEnabled

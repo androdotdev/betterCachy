@@ -1,14 +1,16 @@
 # betterCachy
 
-A personal Wayland desktop environment built on **CachyOS**. It is not a distro and
-not a spin: it is the dotfiles, QML shell, theme pipeline and control-center app that
-turn a plain CachyOS install into this desktop.
+A personal Wayland desktop for **CachyOS**, kept as a **configuration backup**. It is
+not a distro and not a spin: it is the hand-written dotfiles, the QML shell, the theme
+pipeline and the system integration that turn a plain CachyOS install into this
+desktop.
 
-The repo is deliberately small. It keeps the hand-written parts of the desktop and
-leaves generated palettes, caches, downloaded binaries and personal state on the
-machine where they belong.
+There is no companion application. The desktop runs from the configs in this repo;
+restore them with `install.sh`, edit them in place, and keep private state off Git.
 
 > Deep-dive documentation: [`ARCHITECTURE.md`](ARCHITECTURE.md)
+
+> Shell tweaking guide: [`home/.config/quickshell/README.md`](home/.config/quickshell/README.md)
 
 ---
 
@@ -51,12 +53,6 @@ The detailed project credits are further down.
 | Phone integration | **KDE Connect** | notifications, clipboard and file transfer from the phone |
 | Screenshots | **hyprshot + Swash** | `PRINT` region capture → annotate/share |
 | Screen recording | **GPU Screen Recorder** | autostarts the Flatpak recorder UI |
-| Control center | **bettercachy-ctl** | doctor, appearance, services, packages and repo sync |
-| Dotfile backup | **bettercachy-ctl Sync** | compares live `~/.config` with this repo, commit and push |
-| Package audit | **bettercachy-ctl Packages** | installed packages vs `packages/*.txt` |
-
-> Prefer the command line? `./app/bettercachy-ctl doctor` checks the whole stack in
-> one go, and `theme-apply <wallpaper>` re-colours everything.
 
 ### Keybindings worth knowing
 
@@ -72,6 +68,134 @@ The detailed project credits are further down.
 | `SUPER + SHIFT + 1…0` | move window to workspace |
 | `CTRL + SPACE` | Kando menu |
 | `PRINT` | region screenshot → Swash |
+
+---
+
+## Editing the desktop
+
+Most visual tweaks start in one file:
+
+```bash
+cd ~/Projects/betterCachy
+$EDITOR home/.config/quickshell/Config.qml
+rsync -a home/.config/quickshell/ ~/.config/quickshell/
+systemctl --user restart quickshell.service
+```
+
+`Config.qml` holds the bar geometry, animation timings and feature toggles (music
+button, visualizer, notifications, battery, workspaces, tray, dock). The full list and
+a reload cheat-sheet are in
+[`home/.config/quickshell/README.md`](home/.config/quickshell/README.md).
+
+Other common edits:
+
+| Want to change | File |
+|---|---|
+| Bar size, notch timings, feature toggles | `home/.config/quickshell/Config.qml` |
+| Bar widgets and layout | `home/.config/quickshell/bar/Bar.qml` |
+| Quick settings layout | `home/.config/quickshell/bar/QuickSettings.qml` |
+| Dock behaviour | `home/.config/quickshell/bar/Dock.qml` |
+| Window rules, keybinds, animations | `home/.config/hypr/hyprland.lua` |
+| Palette generation | `home/.config/matugen/config.toml` + `templates/` |
+| Lock screen | `home/.config/hypr/hyprlock.conf` |
+| Login screen | `home/.config/sddm-matugen/` |
+
+After editing the repo copy, copy the changed file into `~/.config/...` (or run
+`./install.sh`) and reload the service it belongs to.
+
+---
+
+## Restoring this desktop
+
+On a fresh CachyOS install:
+
+```bash
+# 1a. Core stack from the CachyOS/Arch repos.
+sudo pacman -S hyprland uwsm quickshell matugen hyprpaper hypridle hyprlock \
+  hyprpolkitagent xdg-desktop-portal-hyprland kitty fish cava mpv yt-dlp \
+  kvantum qt5ct qt6ct adw-gtk-theme breeze-icons sddm hyprshot swash \
+  brightnessctl dolphin kdeconnect
+
+# 1b. Launcher/menu packages from the AUR.
+paru -S --needed vicinae-bin kando-bin
+
+# 2. Restore the tracked desktop files (dry-run first if you like).
+./install.sh -n          # preview
+./install.sh             # interactive, backs up replaced files
+# or: ./install.sh -y    # restore everything without prompting
+
+# 3. Enable the session units.
+systemctl --user daemon-reload
+systemctl --user enable --now quickshell.service vicinae.service
+
+# 4. Install the SDDM theme (needs sudo) and re-login.
+./install.sh --system
+
+# 5. Apply a wallpaper once to generate every palette.
+~/.local/bin/theme-apply ~/Pictures/wallpaper.jpg -l
+```
+
+`install.sh` copies `home/` into `$HOME` with rsync and backs up anything it
+replaces under `~/.betterCachy-backup/<timestamp>/`. To do it manually instead:
+
+```bash
+rsync -a home/ "$HOME"/
+SDSM_HOME="$HOME" bash "$HOME/.config/sddm-matugen/install.sh"
+```
+
+Optional: `swayosd` if you want the extra OSD server (its unit is already in the
+repo), `playerctl` if you want the media keys to work, and `gpu-screen-recorder`
+(Flatpak) for the autostart recorder.
+
+`theme-apply` is a fish script. It needs `matugen`, `hyprpaper`, `setfacl`,
+`gsettings` and the two helper scripts in `~/.local/bin`.
+
+---
+
+## Security
+
+This repo is a **public backup of configuration files**. Treat it that way:
+
+- **No secrets are tracked.** Notification history, browser cookies, API tokens,
+  shell history and generated palettes are excluded by `.gitignore` and stay in
+  `~/.config`, `~/.local/state` or `~/.cache` on the machine.
+- **The music player never stores a password.** It asks `yt-dlp` to read cookies from
+  your browser at play time and keeps the exported jar under
+  `~/.local/state/quickshell/...` (ignored by Git).
+- **The only relaxed permission is the SDDM theme.** The installer grants the `sddm`
+  user read access to `~/.config/sddm-matugen/` so the greeter can load the wallpaper
+  and palette. Revoke it with
+  `setfacl -b ~/.config/sddm-matugen` if you remove the theme.
+- **Audit before pushing.** The commands below list anything that looks sensitive and
+  any file that is tracked despite the ignore rules:
+
+```bash
+cd ~/Projects/betterCachy
+git ls-files | grep -Ei 'cookie|token|secret|password|passwd|\.key$|\.pem$'
+git ls-files -ci --exclude-standard      # tracked files matching .gitignore
+git diff --cached                        # review exactly what will be committed
+```
+
+If a secret ever lands in a commit, rotate it first, then rewrite history with
+`git filter-repo` and force-push. Deleting it in a later commit is not enough.
+
+---
+
+## What is deliberately not tracked
+
+Only hand-written files are tracked. These are generated or private and stay local:
+
+- palettes: `quickshell/colors.json`, `hypr/colors.conf`, `gtk.css`,
+  `noctalia*.css`, `qt5ct|qt6ct/colors/matugen.conf`, `Kvantum/Matugen/`,
+  `sddm-matugen/Colors.qml`
+- wallpaper state: `hypr/hyprpaper.conf`, `hypr/lock-wall.conf`,
+  `sddm-matugen/background`
+- bar state: `quickshell/database.json` (notifications, dock pins, toggles)
+- music state and cookies: `~/.local/state/quickshell/ytmusic-*.json`,
+  `ytmusic/*-cookies.txt`
+- caches, `__pycache__`, `*.bak`, AppImages, sockets and logs
+
+`git status --ignored` shows them without ever staging them.
 
 ---
 
@@ -145,20 +269,11 @@ links point at the official upstream, not at a fork.
 | **GPU Screen Recorder** | autostarted Flatpak recorder UI | https://git.dec05eba.com/gpu-screen-recorder |
 | **Shutter** | disabled autostart entry kept for reference | https://shutter-project.org |
 
-### The control-center app
-
-| Project | Used for | Upstream |
-|---|---|---|
-| **Python 3** | backend logic | https://www.python.org |
-| **PySide6 / Qt for Python** | QML window and Python↔QML bridge | https://doc.qt.io/qtforpython-6/ |
-| **uv** | creates `app/.venv` and runs PySide6 on first launch | https://docs.astral.sh/uv/ |
-| **Qt Quick Controls** | `bettercachy-ctl` UI components | https://doc.qt.io/qt-6/qtquickcontrols-index.html |
-
 ### This repo
 
-The QML bar, the music player, the Matugen templates, the SDDM theme and the
-`bettercachy-ctl` app are part of betterCachy, © 2026 rishabh. Everything listed
-above remains the property of its upstream authors and keeps its upstream licence.
+The QML bar, the music player, the Matugen templates and the SDDM theme are part of
+betterCachy, © 2026 rishabh. Everything listed above remains the property of its
+upstream authors and keeps its upstream licence.
 
 ---
 
@@ -170,13 +285,9 @@ betterCachy/
 ├── ARCHITECTURE.md                how the pieces fit together
 ├── install.sh                     restore home/ into $HOME (dry-run + backup)
 ├── demo.jpg                       preview image
-├── app/                           bettercachy-ctl — PySide6/QML control center
-│   ├── bettercachy-ctl            launcher (uv → .venv, falls back to python3)
-│   ├── bettercachy/               backend modules
-│   └── qml/                       window, pages and components
 ├── home/                          files restored into $HOME
 │   ├── .config/
-│   │   ├── quickshell/            shell.qml, bar/, osd/, Colors.qml
+│   │   ├── quickshell/            shell.qml, Config.qml, Colors.qml, bar/, osd/
 │   │   ├── hypr/                  hyprland.lua, settings, idle and lock config
 │   │   ├── matugen/               config.toml + colour templates
 │   │   ├── sddm-matugen/          custom SDDM theme + install.sh
@@ -187,93 +298,9 @@ betterCachy/
 │   │   ├── Kvantum/               selected Kvantum theme name
 │   │   ├── autostart/             session autostart entries
 │   │   └── uwsm/                  session environment
-│   └── .local/
-│       ├── bin/                   theme-apply, kvantum-apply
-│       └── share/applications/    bettercachy-ctl.desktop
-├── packages/                      installed-package lists for the Packages page
+│   └── .local/bin/                theme-apply, kvantum-apply
 └── system/                        system-level SDDM theme files (installed copy)
 ```
-
-## The control center
-
-```bash
-./app/bettercachy-ctl              # GUI (uv installs PySide6 into app/.venv)
-./app/bettercachy-ctl doctor       # tools, services, generated files, drift
-./app/bettercachy-ctl doctor --json
-./app/bettercachy-ctl theme ~/Pictures/wall.jpg [-l]
-./app/bettercachy-ctl hypr         # effective Hyprland values the app manages
-./app/bettercachy-ctl gui          # explicit GUI subcommand
-```
-
-Pages:
-
-- **Doctor** — tool/service/generated-file/drift/package checks with one-click fixes.
-- **Appearance** — wallpaper picker, live palette preview, Hyprland rounding/gaps/border/blur.
-- **Services** — start/stop/restart and read `journalctl --user` logs.
-- **Packages** — installed packages vs `packages/*.txt`, with an install command.
-  "Save installed to repo lists" seeds the folder on first use.
-- **Sync** — live config vs this repo; copy changes in, then commit/push with git.
-
-## Restoring this desktop
-
-On a fresh CachyOS install:
-
-```bash
-# 1a. Core stack from the CachyOS/Arch repos.
-sudo pacman -S hyprland uwsm quickshell matugen hyprpaper hypridle hyprlock \
-  hyprpolkitagent xdg-desktop-portal-hyprland kitty fish cava mpv yt-dlp \
-  kvantum qt5ct qt6ct adw-gtk-theme breeze-icons sddm hyprshot swash \
-  brightnessctl dolphin kdeconnect
-
-# 1b. Launcher/menu packages from the AUR.
-paru -S --needed vicinae-bin kando-bin
-
-# 2. Restore the tracked desktop files (dry-run first if you like).
-./install.sh -n          # preview
-./install.sh             # interactive, backs up replaced files
-# or: ./install.sh -y    # restore everything without prompting
-
-# 3. Enable the session units.
-systemctl --user daemon-reload
-systemctl --user enable --now quickshell.service vicinae.service
-
-# 4. Install the SDDM theme (needs sudo) and re-login.
-./install.sh --system
-
-# 5. Apply a wallpaper once to generate every palette.
-~/.local/bin/theme-apply ~/Pictures/wallpaper.jpg -l
-```
-
-`install.sh` copies `home/` into `$HOME` with rsync and backs up anything it
-replaces under `~/.betterCachy-backup/<timestamp>/`. To do it manually instead:
-
-```bash
-rsync -a home/ "$HOME"/
-SDSM_HOME="$HOME" bash "$HOME/.config/sddm-matugen/install.sh"
-```
-
-Optional: `swayosd` if you want the extra OSD server (its unit is already in the
-repo), `playerctl` if you want the media keys to work, and `gpu-screen-recorder`
-(Flatpak) for the autostart recorder.
-
-`theme-apply` is a fish script. It needs `matugen`, `hyprpaper`, `setfacl`,
-`gsettings` and the two helper scripts in `~/.local/bin`.
-
-## What is deliberately not tracked
-
-The Sync page and this backup copy only hand-written files. These are generated or
-private and stay local:
-
-- palettes: `quickshell/colors.json`, `hypr/colors.conf`, `gtk.css`,
-  `noctalia*.css`, `qt5ct|qt6ct/colors/matugen.conf`, `Kvantum/Matugen/`,
-  `sddm-matugen/Colors.qml`
-- wallpaper state: `hypr/hyprpaper.conf`, `hypr/lock-wall.conf`,
-  `sddm-matugen/background`
-- app state: `quickshell/database.json` (notification history),
-  `~/.local/state/quickshell/ytmusic-*.json`, browser cookie exports
-- caches, `__pycache__`, `*.bak`, AppImages and symlinks in `~/.local/bin`
-- `bettercachy.lua` (written by the control center; the include line is added
-  automatically to `hyprland.lua`)
 
 ## License
 

@@ -1,3 +1,0 @@
-com.dec05eba.gpu_screen_recorder
-io.github.CoderDayton.nightcap
-org.gimp.GIMP

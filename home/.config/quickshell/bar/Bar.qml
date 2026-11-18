@@ -22,10 +22,12 @@ Scope {
     property bool playerOpen: false
     property bool barHoverRaw: false
     property bool barHovered: false
+    property bool popupGrace: false
+    readonly property bool showBattery: Config.battery && batteryDevice !== null && batteryDevice.ready
     property bool notchShown: !BarDatabase.notchAutoHide || BarDatabase.reserveSpace
-    property bool notchExpanded: barHovered || activePopup !== "" || playerOpen
+    property bool notchExpanded: (Config.hoverExpand && barHovered) || activePopup !== "" || playerOpen || popupGrace
     readonly property bool notchAutoHide: BarDatabase.notchAutoHide && !BarDatabase.reserveSpace
-    readonly property bool notchKeepShown: !notchAutoHide || barHoverRaw || barHovered || activePopup !== "" || playerOpen
+    readonly property bool notchKeepShown: !notchAutoHide || barHoverRaw || barHovered || activePopup !== "" || playerOpen || popupGrace
 
     // Debounced hover: a short delay before expanding/revealing avoids flicker
     // when the pointer crosses the bar, and a longer delay before collapsing
@@ -42,13 +44,32 @@ Scope {
 
     Timer {
         id: hoverExpandTimer
-        interval: 45
+        interval: Config.hoverExpandDelay
         onTriggered: if (root.barHoverRaw) root.barHovered = true
     }
     Timer {
         id: hoverCollapseTimer
-        interval: 150
+        interval: Config.hoverCollapseDelay
         onTriggered: if (!root.barHoverRaw) root.barHovered = false
+    }
+
+    // Keep the notch expanded briefly after the music popup closes. Closing it
+    // with the same capsule click would otherwise collapse and re-expand the
+    // bar while the pointer is still on the button.
+    onPlayerOpenChanged: {
+        if (playerOpen) {
+            popupGraceTimer.stop()
+            popupGrace = false
+        } else {
+            popupGrace = true
+            popupGraceTimer.restart()
+        }
+    }
+
+    Timer {
+        id: popupGraceTimer
+        interval: Config.popupCloseGrace
+        onTriggered: root.popupGrace = false
     }
 
     onNotchAutoHideChanged: notchShown = notchKeepShown
@@ -64,7 +85,7 @@ Scope {
 
     Timer {
         id: notchHideTimer
-        interval: 260
+        interval: Config.notchHideDelay
         onTriggered: if (!root.notchKeepShown) root.notchShown = false
     }
     property var notificationToasts: []
@@ -141,7 +162,7 @@ Scope {
 
     Timer {
         id: popupCloseTimer
-        interval: 220
+        interval: Config.popupCloseDelay
         onTriggered: root.activePopup = ""
     }
 
@@ -186,14 +207,14 @@ Scope {
             required property var modelData
             screen: modelData
             anchors { top: true; left: true; right: true }
-            implicitHeight: 36
+            implicitHeight: Config.panelHeight
             color: "transparent"
             exclusionMode: BarDatabase.reserveSpace ? ExclusionMode.Auto : ExclusionMode.Ignore
             mask: Region {
                 x: 0
                 y: 0
                 width: panel.width
-                height: root.notchShown ? panel.implicitHeight : 5
+                height: root.notchShown ? Config.panelHeight : Config.hiddenHoverHeight
             }
 
             Item {
@@ -203,18 +224,18 @@ Scope {
                 Rectangle {
                     id: notch
                     anchors.horizontalCenter: parent.horizontalCenter
-                    y: root.notchShown ? 2 : -40
+                    y: root.notchShown ? Config.notchTop : -Config.hiddenOffset
                     opacity: root.notchShown ? 1 : 0
-                    Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                    Behavior on y { NumberAnimation { duration: Config.revealDuration; easing.type: Easing.OutCubic } }
                     Behavior on opacity { NumberAnimation { duration: 160 } }
-                    width: root.notchExpanded ? Math.min(panel.width - 60, 1180) : 340
-                    height: 32
-                    radius: 16
+                    width: root.notchExpanded ? Math.min(panel.width - Config.screenEdgeMargin, Config.expandedMaxWidth) : Config.collapsedWidth
+                    height: Config.notchHeight
+                    radius: Config.notchRadius
                     color: Colors.surfaceContainer
                     border.color: Qt.alpha(Colors.outline, 0.35)
                     border.width: 1
                     clip: true
-                    Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                    Behavior on width { NumberAnimation { duration: Config.widthDuration; easing.type: Easing.OutCubic } }
 
                     Row {
                         anchors.left: parent.left
@@ -224,7 +245,7 @@ Scope {
                         opacity: root.notchExpanded ? 1 : 0
                         visible: opacity > 0
                         enabled: root.notchExpanded
-                        Behavior on opacity { NumberAnimation { duration: 140 } }
+                        Behavior on opacity { NumberAnimation { duration: Config.contentFadeDuration } }
 
                         MiniMenu {
                             id: wsMenu
@@ -238,7 +259,7 @@ Scope {
                         }
 
                         Repeater {
-                            model: root.workspaceEntries
+                            model: Config.workspaces ? root.workspaceEntries : []
                             delegate: Rectangle {
                                 required property var modelData
                                 readonly property bool numericSlot: typeof modelData === "number"
@@ -309,7 +330,7 @@ Scope {
                         }
 
                         Rectangle {
-                            visible: SystemTray.items.values.length > 0
+                            visible: Config.systemTray && SystemTray.items.values.length > 0
                             width: trayIcons.implicitWidth + 10
                             height: 30
                             radius: height / 2
@@ -371,24 +392,25 @@ Scope {
                         opacity: root.notchExpanded ? 1 : 0
                         visible: opacity > 0
                         enabled: root.notchExpanded
-                        Behavior on opacity { NumberAnimation { duration: 140 } }
+                        Behavior on opacity { NumberAnimation { duration: Config.contentFadeDuration } }
 
                         Rectangle {
                             id: ytmusicButton
+                            visible: Config.musicButton
                             readonly property int barCount: ytMusicPlayer.cavaBarCount
                             readonly property real barWidth: 2
                             readonly property real barGap: 2
                             readonly property real vizPad: 9
                             readonly property real barsWidth: barCount * barWidth + (barCount - 1) * barGap
                             readonly property real vizWidth: barsWidth + vizPad * 2
-                            readonly property bool vizActive: ytMusicPlayer.playing
+                            readonly property bool vizActive: Config.musicVisualizer && ytMusicPlayer.playing
 
                             width: 30 + (vizActive ? vizWidth : 0)
                             height: 30
                             radius: height / 2
                             clip: true
                             color: ytmusicMouse.containsMouse || ytMusicPlayer.open ? Colors.surfaceContainerHigh : Colors.surfaceContainer
-                            Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                            Behavior on width { NumberAnimation { duration: Config.widthDuration; easing.type: Easing.OutCubic } }
 
                             // Visualizer sits to the LEFT of the glyph. The glyph stays
                             // pinned to the right edge so the capsule opens leftward and
@@ -498,7 +520,7 @@ Scope {
                         }
 
                         Rectangle {
-                            visible: root.batteryDevice !== null && root.batteryDevice.ready
+                            visible: root.showBattery
                             color: Colors.surfaceContainer
                             radius: height / 2
                             width: batteryText.implicitWidth + 16
@@ -555,6 +577,7 @@ Scope {
                                 spacing: 10
                                 Text {
                                     id: bellButton
+                                    visible: Config.notifications
                                     text: "󰂚"
                                     color: root.unreadCount > 0 ? Colors.error : Colors.fg
                                     font.pixelSize: 13
@@ -687,7 +710,7 @@ Scope {
 
                     Rectangle {
                         id: mediaWidget
-                        visible: root.notchExpanded && (root.activePlayer !== null || opacity > 0)
+                        visible: Config.mediaWidget && root.notchExpanded && (root.activePlayer !== null || opacity > 0)
                         opacity: (root.activePlayer !== null ? 1 : 0) * (root.notchExpanded ? 1 : 0)
                         scale: root.activePlayer !== null ? 1 : 0.94
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -735,7 +758,7 @@ Scope {
                             spacing: 10
 
                             Row {
-                                visible: ytMusicPlayer.playing
+                                visible: Config.musicVisualizer && ytMusicPlayer.playing
                                 spacing: 2
                                 anchors.verticalCenter: parent.verticalCenter
 
@@ -778,7 +801,7 @@ Scope {
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                             Text {
-                                visible: root.batteryDevice !== null && root.batteryDevice.ready
+                                visible: root.showBattery
                                 text: {
                                     const device = root.batteryDevice
                                     if (!device) return ""
@@ -797,12 +820,19 @@ Scope {
                 }
             }
 
-            // Passive hover sensor above the bar content. HoverHandlers do not
+            // Passive hover sensor. It covers only the capsule (or a small
+            // centered strip while the notch is hidden) so hovering the empty
+            // reserved space does not expand the bar. HoverHandlers do not
             // accept pointer events, so clicks still reach the widgets below.
             Item {
                 id: hoverSensor
-                anchors.fill: parent
                 z: 1000
+                x: notch.x
+                width: notch.width
+                y: 0
+                height: root.notchShown
+                    ? Config.notchTop + Config.notchHeight
+                    : Config.hiddenHoverHeight
                 HoverHandler { onHoveredChanged: root.barHoverRaw = hovered }
             }
 
@@ -909,7 +939,7 @@ Scope {
             anchors { right: true; bottom: true }
             implicitWidth: 370
             implicitHeight: 220
-            visible: root.notificationToasts.length > 0
+            visible: Config.notifications && root.notificationToasts.length > 0
             color: "transparent"
             focusable: false
             exclusionMode: ExclusionMode.Ignore

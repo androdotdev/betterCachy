@@ -7,7 +7,6 @@ home/.config/quickshell/colors.json
 home/.config/hypr/colors.conf
 home/.config/hypr/hyprpaper.conf
 home/.config/hypr/lock-wall.conf
-home/.config/hypr/bettercachy.lua
 home/.config/gtk-3.0/gtk.css
 home/.config/gtk-4.0/gtk.css
 home/.config/qt5ct/colors/
@@ -16,7 +15,40 @@ home/.config/Kvantum/Matugen/
 home/.config/sddm-matugen/background
 home/.config/sddm-matugen/Colors.qml
 
-# Personal state and editor/backup leftovers.
+# Personal state. The bar rewrites these; they contain notification text,
+# cookies, queue history and other private data that must never be pushed.
 home/.config/quickshell/database.json
-home/.config/bettercachy/
+home/.local/state/
+home/.cache/
+*.log
+*.sock
+*.socket
+*.sqlite
+*.sqlite3
+*.db
+
+# Credentials and secrets. Keep them out of the public backup even by accident.
+*.cookie
+*cookies*.txt
+*password*
+*passwd*
+*token*
+*secret*
+*.key
+*.pem
+*.p12
+id_rsa*
+id_ed25519*
+known_hosts
+.netrc
+.authinfo
+.env
+.env.*
+auth.json
+
+# Editor, build and backup leftovers.
 *.bak
+*.bak.*
+*.swp
+*~
+*.AppImage

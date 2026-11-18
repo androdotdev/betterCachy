@@ -185,7 +185,7 @@ Scope {
                 spacing: 9
 
                 Text {
-                    text: "Control center"
+                    text: "Quick settings"
                     color: Colors.primary
                     font.pixelSize: 13
                     font.bold: true

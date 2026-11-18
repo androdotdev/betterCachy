@@ -14,7 +14,7 @@ Scope {
             id: win
             required property var modelData
             screen: modelData
-            visible: BarDatabase.dockEnabled
+            visible: Config.dock && BarDatabase.dockEnabled
             anchors { bottom: true }
             implicitWidth: Math.max(shell.width + 60, 320)
             implicitHeight: content.implicitHeight + 90
