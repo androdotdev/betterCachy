@@ -95,6 +95,7 @@ Other common edits:
 | Bar widgets and layout | `home/.config/quickshell/bar/Bar.qml` |
 | Quick settings layout | `home/.config/quickshell/bar/QuickSettings.qml` |
 | Dock behaviour | `home/.config/quickshell/bar/Dock.qml` |
+| Kando radial menu and theme | `home/.config/kando/menus.json`, `home/.config/kando/config.json` |
 | Window rules, keybinds, animations | `home/.config/hypr/hyprland.lua` |
 | Palette generation | `home/.config/matugen/config.toml` + `templates/` |
 | Lock screen | `home/.config/hypr/hyprlock.conf` |

@@ -1,0 +1,705 @@
+{
+  "version": "3.0.1",
+  "menus": [
+    {
+      "root": {
+        "name": "CachyOS",
+        "icon": "rocket_launch",
+        "iconTheme": "material-symbols-rounded",
+        "type": "root",
+        "activateWorkflow": {
+          "quickSelectKey": "Escape",
+          "actions": [
+            {
+              "type": "close-menu"
+            }
+          ]
+        },
+        "children": [
+          {
+            "name": "Vicinae",
+            "icon": "vicinae",
+            "iconTheme": "system",
+            "type": "button",
+            "selectWorkflow": {
+              "quickSelectKey": "V",
+              "actions": [
+                {
+                  "type": "execute-command",
+                  "command": "vicinae toggle",
+                  "detached": true,
+                  "isolated": false
+                },
+                {
+                  "type": "close-menu"
+                }
+              ]
+            },
+            "tags": [
+              "favs"
+            ]
+          },
+          {
+            "name": "Apps",
+            "icon": "apps",
+            "iconTheme": "material-symbols-rounded",
+            "type": "submenu",
+            "openWorkflow": {
+              "quickSelectKey": "A",
+              "actions": []
+            },
+            "activateWorkflow": {
+              "quickSelectKey": "Backspace",
+              "actions": [
+                {
+                  "type": "close-submenu"
+                }
+              ]
+            },
+            "children": [
+              {
+                "name": "OpenCode",
+                "icon": "ai.opencode.desktop",
+                "iconTheme": "system",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "O",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "opencode",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Kitty",
+                "icon": "kitty",
+                "iconTheme": "system",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "T",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "kitty",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Dolphin",
+                "icon": "org.kde.dolphin",
+                "iconTheme": "system",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "F",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "dolphin",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Helium",
+                "icon": "helium-browser",
+                "iconTheme": "system",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "H",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "helium-browser",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "PhotoGIMP",
+                "icon": "photogimp",
+                "iconTheme": "system",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "G",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "flatpak run --branch=stable --command=gimp --file-forwarding org.gimp.GIMP @@u  @@",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "btop",
+                "icon": "monitoring",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "B",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "kitty -e btop",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              }
+            ],
+            "tags": [
+              "favs"
+            ]
+          },
+          {
+            "name": "Windows",
+            "icon": "window",
+            "iconTheme": "material-symbols-rounded",
+            "type": "submenu",
+            "openWorkflow": {
+              "quickSelectKey": "W",
+              "actions": []
+            },
+            "activateWorkflow": {
+              "quickSelectKey": "Backspace",
+              "actions": [
+                {
+                  "type": "close-submenu"
+                }
+              ]
+            },
+            "children": [
+              {
+                "name": "Close window",
+                "icon": "close",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "C",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+KeyC"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Toggle floating",
+                "icon": "picture_in_picture_alt",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "F",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+KeyF"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Scratchpad",
+                "icon": "layers",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "S",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+KeyS"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Send to scratchpad",
+                "icon": "drive_file_move",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "M",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+ShiftLeft+KeyS"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Focus left",
+                "icon": "arrow_back",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "H",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+ArrowLeft"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Focus right",
+                "icon": "arrow_forward",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "L",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+ArrowRight"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Workspaces",
+            "icon": "grid_view",
+            "iconTheme": "material-symbols-rounded",
+            "type": "submenu",
+            "openWorkflow": {
+              "quickSelectKey": "K",
+              "actions": []
+            },
+            "activateWorkflow": {
+              "quickSelectKey": "Backspace",
+              "actions": [
+                {
+                  "type": "close-submenu"
+                }
+              ]
+            },
+            "children": [
+              {
+                "name": "Workspace 1",
+                "icon": "looks_one",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "1",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+Digit1"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Workspace 2",
+                "icon": "looks_two",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "2",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+Digit2"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Workspace 3",
+                "icon": "looks_3",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "3",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+Digit3"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Workspace 4",
+                "icon": "looks_4",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "4",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+Digit4"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Workspace 5",
+                "icon": "looks_5",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "5",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+Digit5"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Workspace 6",
+                "icon": "looks_6",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "6",
+                  "actions": [
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "MetaLeft+Digit6"
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Edit",
+            "icon": "edit",
+            "iconTheme": "material-symbols-rounded",
+            "type": "submenu",
+            "openWorkflow": {
+              "quickSelectKey": "E",
+              "actions": []
+            },
+            "activateWorkflow": {
+              "quickSelectKey": "Backspace",
+              "actions": [
+                {
+                  "type": "close-submenu"
+                }
+              ]
+            },
+            "children": [
+              {
+                "name": "Copy",
+                "icon": "content_copy",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "C",
+                  "actions": [
+                    {
+                      "type": "close-menu"
+                    },
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "ControlLeft+KeyC"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Cut",
+                "icon": "content_cut",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "X",
+                  "actions": [
+                    {
+                      "type": "close-menu"
+                    },
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "ControlLeft+KeyX"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Paste",
+                "icon": "content_paste_go",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "V",
+                  "actions": [
+                    {
+                      "type": "close-menu"
+                    },
+                    {
+                      "type": "simulate-hotkey",
+                      "hotkey": "ControlLeft+KeyV"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Screenshot",
+            "icon": "photo_camera",
+            "iconTheme": "material-symbols-rounded",
+            "type": "button",
+            "selectWorkflow": {
+              "quickSelectKey": "S",
+              "actions": [
+                {
+                  "type": "execute-command",
+                  "command": "hyprshot -m region --raw | swash --stdin",
+                  "detached": true,
+                  "isolated": false
+                },
+                {
+                  "type": "close-menu"
+                }
+              ]
+            },
+            "tags": [
+              "favs"
+            ]
+          },
+          {
+            "name": "System",
+            "icon": "settings",
+            "iconTheme": "material-symbols-rounded",
+            "type": "submenu",
+            "openWorkflow": {
+              "quickSelectKey": "Y",
+              "actions": []
+            },
+            "activateWorkflow": {
+              "quickSelectKey": "Backspace",
+              "actions": [
+                {
+                  "type": "close-submenu"
+                }
+              ]
+            },
+            "children": [
+              {
+                "name": "Lock screen",
+                "icon": "lock",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "L",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "loginctl lock-session",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Mute audio",
+                "icon": "volume_off",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "M",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Volume up",
+                "icon": "volume_up",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "U",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Volume down",
+                "icon": "volume_down",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "D",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Brightness up",
+                "icon": "brightness_high",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "B",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "brightnessctl set +5%",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Brightness down",
+                "icon": "brightness_low",
+                "iconTheme": "material-symbols-rounded",
+                "type": "button",
+                "selectWorkflow": {
+                  "quickSelectKey": "N",
+                  "actions": [
+                    {
+                      "type": "execute-command",
+                      "command": "brightnessctl set 5%-",
+                      "detached": true,
+                      "isolated": false
+                    },
+                    {
+                      "type": "close-menu"
+                    }
+                  ]
+                }
+              }
+            ],
+            "tags": [
+              "favs"
+            ]
+          }
+        ]
+      },
+      "shortcut": "Control+Space",
+      "shortcutID": "example-menu",
+      "useFixedPosition": false,
+      "fixedMenuPosition": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "anchored": false,
+      "hoverMode": false,
+      "tags": []
+    }
+  ],
+  "collections": [
+    {
+      "name": "Favorites",
+      "icon": "favorite",
+      "iconTheme": "material-symbols-rounded",
+      "tags": [
+        "favs"
+      ]
+    }
+  ]
+}
