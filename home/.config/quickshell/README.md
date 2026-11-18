@@ -76,7 +76,7 @@ Every value has a comment in the file. The short version:
 | `workspaces` | `true` | workspace capsules on the left |
 | `systemTray` | `true` | tray icons |
 | `mediaWidget` | `true` | now-playing capsule in the middle (MPRIS) |
-| `dock` | `true` | floating bottom dock |
+| `dock` | `true` | floating bottom dock (optional; Kando and Vicinae already launch apps) |
 
 ### Common recipes
 
@@ -113,6 +113,26 @@ property int widthDuration: 400
 property int revealDuration: 350
 ```
 
+**Turn off the dock**
+
+Kando (`CTRL + SPACE`) and Vicinae already handle launching, so the dock is optional.
+Set the config toggle off for good:
+
+```qml
+property bool dock: false
+```
+
+Or turn it off at runtime without touching the repo (stop the shell first so it does not
+write its cached state back over the file):
+
+```bash
+systemctl --user stop quickshell.service
+python3 -c "import json,os;p=os.path.expanduser('~/.config/quickshell/database.json');d=json.load(open(p));d['dockEnabled']=False;json.dump(d,open(p,'w'),indent=2)"
+systemctl --user start quickshell.service
+```
+
+Use `True` instead of `False` to bring it back.
+
 ## Runtime toggles vs config
 
 Two different kinds of switches exist on purpose:
@@ -141,7 +161,7 @@ state back over your edit when it next saves.
 
 ```bash
 systemctl --user stop quickshell.service
-python3 -c "import json,os;p=os.path.expanduser('~/.config/quickshell/database.json');d=json.load(open(p));d['dockEnabled']=False;json.dump(d,open(p,'w'),indent=2)"
+python3 -c "import json,os;p=os.path.expanduser('~/.config/quickshell/database.json');d=json.load(open(p));d['doNotDisturb']=True;json.dump(d,open(p,'w'),indent=2)"
 systemctl --user start quickshell.service
 ```
 
